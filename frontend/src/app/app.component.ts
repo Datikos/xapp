@@ -1,7 +1,6 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { HttpClientModule } from '@angular/common/http';
 
 import { BinanceKlinesService } from './services/binance-klines.service';
 import { SignalsStore } from './store/signals.store';
@@ -10,7 +9,7 @@ import { Interval } from './models/candle.model';
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule, HttpClientModule],
+  imports: [CommonModule, FormsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="app">
@@ -24,23 +23,23 @@ import { Interval } from './models/candle.model';
         <div class="control-row">
           <label>
             Interval
-            <select [(ngModel)]="interval" (change)="reload()">
+            <select [(ngModel)]="intervalValue" (change)="reload()">
               <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
             </select>
           </label>
-          <button type="button" (click)="reload()" [disabled]="loading">{{ loading ? 'Loading…' : 'Reload now' }}</button>
-          <button type="button" (click)="toggleAuto()">{{ auto ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
+          <button type="button" (click)="reload()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Reload now' }}</button>
+          <button type="button" (click)="toggleAuto()">{{ auto() ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
           <span class="trend" [class.bullish]="store.trend() === 'BULL'" [class.bearish]="store.trend() === 'BEAR'">
             Trend: {{ store.trend() }}
           </span>
         </div>
-        <p class="status" *ngIf="error">⚠️ {{ error }}</p>
-        <p class="status" *ngIf="!error && loading">Fetching latest candles…</p>
-        <p class="status" *ngIf="!loading && store.latestSignal()">
+        <p class="status" *ngIf="error()">⚠️ {{ error() }}</p>
+        <p class="status" *ngIf="!error() && loading()">Fetching latest candles…</p>
+        <p class="status" *ngIf="!loading() && store.latestSignal()">
           Latest signal: <strong [class.long]="store.latestSignal()?.type === 'LONG'" [class.short]="store.latestSignal()?.type === 'SHORT'">
             {{ store.latestSignal()?.type }}
           </strong>
-          @ {{ store.latestSignal()?.price | number: '1.0-0' }}
+          &#64; {{ store.latestSignal()?.price | number: '1.0-0' }}
           on {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}
         </p>
       </section>
@@ -51,7 +50,7 @@ import { Interval } from './models/candle.model';
         <ul *ngIf="store.signals().length">
           <li *ngFor="let signal of store.signals().slice(-50); let last = last">
             <strong [class.long]="signal.type === 'LONG'" [class.short]="signal.type === 'SHORT'">{{ signal.type }}</strong>
-            @ {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
+            &#64; {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
             <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
           </li>
         </ul>
@@ -297,10 +296,18 @@ export class AppComponent implements OnInit, OnDestroy {
 
   readonly intervals: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
 
-  interval: Interval = '1h';
-  auto = false;
-  loading = false;
-  error: string | null = null;
+  private readonly intervalSignal = signal<Interval>('1h');
+  readonly auto = signal(false);
+  readonly loading = signal(false);
+  readonly error = signal<string | null>(null);
+
+  get intervalValue(): Interval {
+    return this.intervalSignal();
+  }
+
+  set intervalValue(value: Interval) {
+    this.intervalSignal.set(value);
+  }
 
   private pollHandle?: ReturnType<typeof setInterval>;
 
@@ -313,24 +320,24 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   reload(): void {
-    this.loading = true;
-    this.error = null;
+    this.loading.set(true);
+    this.error.set(null);
 
-    this.api.getKlines('BTCUSDT', this.interval, 600).subscribe({
+    this.api.getKlines('BTCUSDT', this.intervalSignal(), 600).subscribe({
       next: (candles) => {
         this.store.candles.set(candles);
-        this.loading = false;
+        this.loading.set(false);
       },
       error: (err) => {
         console.error('Failed to load Binance klines', err);
-        this.error = 'Failed to fetch market data. Please retry in a moment.';
-        this.loading = false;
+        this.error.set('Failed to fetch market data. Please retry in a moment.');
+        this.loading.set(false);
       },
     });
   }
 
   toggleAuto(): void {
-    if (this.auto) {
+    if (this.auto()) {
       this.stopAuto();
     } else {
       this.startAuto();
@@ -338,7 +345,7 @@ export class AppComponent implements OnInit, OnDestroy {
   }
 
   private startAuto(): void {
-    this.auto = true;
+    this.auto.set(true);
     this.pollHandle = setInterval(() => this.reload(), 30_000);
   }
 
@@ -347,6 +354,6 @@ export class AppComponent implements OnInit, OnDestroy {
       clearInterval(this.pollHandle);
       this.pollHandle = undefined;
     }
-    this.auto = false;
+    this.auto.set(false);
   }
 }

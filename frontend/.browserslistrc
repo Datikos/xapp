@@ -1,0 +1,7 @@
+# This configuration defines the browser targets for the Angular build output.
+last 1 Chrome version
+last 1 Firefox version
+last 2 Edge major versions
+last 2 Safari major versions
+firefox ESR
+not IE 11
