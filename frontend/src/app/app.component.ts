@@ -1,10 +1,16 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
-import { BinanceKlinesService } from './services/binance-klines.service';
 import { SignalsStore } from './store/signals.store';
 import { Interval } from './models/candle.model';
+import { DataProvider, MarketDataService } from './services/market-data.service';
+
+interface ProviderOption {
+  id: DataProvider;
+  label: string;
+  symbol: string;
+}
 
 @Component({
   selector: 'app-root',
@@ -22,8 +28,14 @@ import { Interval } from './models/candle.model';
         <h2>Data Controls</h2>
         <div class="control-row">
           <label>
+            Provider
+            <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
+              <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
+            </select>
+          </label>
+          <label>
             Interval
-            <select [(ngModel)]="intervalValue" (change)="reload()">
+            <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
               <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
             </select>
           </label>
@@ -42,6 +54,57 @@ import { Interval } from './models/candle.model';
           &#64; {{ store.latestSignal()?.price | number: '1.0-0' }}
           on {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}
         </p>
+        <p class="status subtle" *ngIf="!loading() && store.latestFastSignal()">
+          Momentum ping: <strong [class.long]="store.latestFastSignal()?.type === 'LONG'" [class.short]="store.latestFastSignal()?.type === 'SHORT'">
+            {{ store.latestFastSignal()?.type }}
+          </strong>
+          &#64; {{ store.latestFastSignal()?.price | number: '1.0-0' }}
+          on {{ store.latestFastSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}
+        </p>
+        <p class="status subtle" *ngIf="!loading() && !error() && store.lastCandle() as last">
+          Last {{ intervalValue }} candle closed at {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}
+        </p>
+        <p class="status subtle" *ngIf="!loading() && !error() && store.lastUpdated() as updated">
+          Data refreshed at {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}
+        </p>
+        <p class="status subtle" *ngIf="!loading() && !error()">
+          Source: {{ providerLabel() }}
+        </p>
+        <p class="status warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
+          No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }} — waiting for indicator confluence.
+        </p>
+        <p class="status subtle" *ngIf="!loading() && !error() && latestNearMiss() as near">
+          Closest setup: {{ near.bias }} bias, missing {{ near.missing.join(', ') }}
+          at {{ near.time | date: 'yyyy-MM-dd HH:mm' }}
+        </p>
+      </section>
+
+      <section class="card insights" *ngIf="store.trendDetails() as trendDetails">
+        <h2>Trend Confidence</h2>
+        <p class="trend-summary">
+          Overall bias:
+          <strong [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
+            {{ trendDetails.direction }}
+          </strong>
+          • Confidence {{ trendDetails.confidence }}%
+          <span class="trend-score">Score {{ trendDetails.score }}</span>
+        </p>
+        <div class="confidence-bar" aria-hidden="true">
+          <div class="confidence-fill" [style.width.%]="trendDetails.confidence"></div>
+        </div>
+        <ul class="insight-list">
+          <li
+            *ngFor="let factor of trendDetails.factors"
+            [class.bullish]="factor.direction === 'BULL'"
+            [class.bearish]="factor.direction === 'BEAR'"
+          >
+            <div class="insight-header">
+              <span class="title">{{ factor.label }}</span>
+              <span class="direction">{{ factor.direction }}</span>
+            </div>
+            <p>{{ factor.detail }}</p>
+          </li>
+        </ul>
       </section>
 
       <section class="card signals">
@@ -52,6 +115,35 @@ import { Interval } from './models/candle.model';
             <strong [class.long]="signal.type === 'LONG'" [class.short]="signal.type === 'SHORT'">{{ signal.type }}</strong>
             &#64; {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
             <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card fast-signals">
+        <h2>Momentum Scout Signals</h2>
+        <p *ngIf="!store.fastSignals().length">No quick momentum signals yet — watching EMA9/EMA21 crosses.</p>
+        <ul *ngIf="store.fastSignals().length">
+          <li *ngFor="let signal of store.fastSignals().slice(-50)">
+            <strong [class.long]="signal.type === 'LONG'" [class.short]="signal.type === 'SHORT'">{{ signal.type }}</strong>
+            &#64; {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
+            <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+          </li>
+        </ul>
+      </section>
+
+      <section class="card diagnostics" *ngIf="store.nearMisses().length">
+        <h2>Near Miss Monitor</h2>
+        <p>Setups that were one criterion away from triggering a full signal.</p>
+        <ul>
+          <li *ngFor="let miss of store.nearMisses().slice(-10)">
+            <div class="miss-header">
+              <span class="bias" [class.long]="miss.bias === 'LONG'" [class.short]="miss.bias === 'SHORT'">{{ miss.bias }}</span>
+              <time>{{ miss.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+            </div>
+            <p class="miss-detail">
+              Satisfied: {{ miss.satisfied.join(', ') || 'none' }}<br />
+              Missing: {{ miss.missing.join(', ') || 'none' }}
+            </p>
           </li>
         </ul>
       </section>
@@ -217,6 +309,88 @@ import { Interval } from './models/candle.model';
         color: #94a3b8;
       }
 
+      .status.subtle {
+        color: #64748b;
+      }
+
+      .status.warning {
+        color: #fca5a5;
+      }
+
+      .insights .trend-summary {
+        margin-bottom: 12px;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        align-items: baseline;
+        color: #cbd5f5;
+      }
+
+      .trend-score {
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+
+      .confidence-bar {
+        height: 8px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.2);
+        overflow: hidden;
+        margin-bottom: 16px;
+      }
+
+      .confidence-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #22c55e, #3b82f6);
+      }
+
+      .insight-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .insight-list li {
+        background: rgba(15, 23, 42, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 12px;
+        padding: 12px 14px;
+      }
+
+      .insight-list li.bullish {
+        border-color: rgba(34, 197, 94, 0.35);
+      }
+
+      .insight-list li.bearish {
+        border-color: rgba(248, 113, 113, 0.35);
+      }
+
+      .insight-header {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-weight: 600;
+        margin-bottom: 6px;
+      }
+
+      .insight-header .title {
+        color: #e2e8f0;
+      }
+
+      .insight-header .direction {
+        color: #94a3b8;
+        font-size: 0.85rem;
+      }
+
+      .insight-list p {
+        margin: 0;
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+
       .signals ul {
         display: flex;
         flex-direction: column;
@@ -235,6 +409,24 @@ import { Interval } from './models/candle.model';
         border: 1px solid rgba(148, 163, 184, 0.12);
       }
 
+      .fast-signals ul,
+      .diagnostics ul {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .fast-signals li,
+      .diagnostics li {
+        padding: 12px 16px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.45);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
       .signals strong.long {
         color: #4ade80;
       }
@@ -243,9 +435,46 @@ import { Interval } from './models/candle.model';
         color: #f87171;
       }
 
+      strong.long {
+        color: #4ade80;
+      }
+
+      strong.short {
+        color: #f87171;
+      }
+
       .signals time {
         color: #94a3b8;
         font-size: 0.85rem;
+      }
+
+      .fast-signals time,
+      .diagnostics time {
+        color: #94a3b8;
+        font-size: 0.85rem;
+      }
+
+      .diagnostics p {
+        margin: 4px 0 0;
+        color: #94a3b8;
+        font-size: 0.9rem;
+      }
+
+      .miss-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        font-weight: 600;
+        color: #cbd5f5;
+      }
+
+      .miss-header .bias.long {
+        color: #4ade80;
+      }
+
+      .miss-header .bias.short {
+        color: #f87171;
       }
 
       .playbook ol {
@@ -283,6 +512,10 @@ import { Interval } from './models/candle.model';
           text-align: center;
         }
 
+        .insight-list {
+          gap: 12px;
+        }
+
         .signals ul {
           max-height: 440px;
         }
@@ -291,15 +524,38 @@ import { Interval } from './models/candle.model';
   ],
 })
 export class AppComponent implements OnInit, OnDestroy {
-  private readonly api = inject(BinanceKlinesService);
+  private readonly api = inject(MarketDataService);
   readonly store = inject(SignalsStore);
 
   readonly intervals: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
+  readonly providers: ProviderOption[] = [
+    { id: 'binance', label: 'Binance (Spot)', symbol: 'BTCUSDT' },
+    { id: 'coinbase', label: 'Coinbase Advanced', symbol: 'BTC-USD' },
+  ];
 
   private readonly intervalSignal = signal<Interval>('1h');
+  private readonly providerSignal = signal<DataProvider>('binance');
   readonly auto = signal(false);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
+  readonly staleSignal = computed(() => {
+    const latest = this.store.latestSignal();
+    const lastCandle = this.store.lastCandle();
+    const interval = this.intervalSignal();
+    if (!latest || !lastCandle) {
+      return false;
+    }
+    const diff = lastCandle.closeTime - latest.time;
+    return diff >= this.intervalToMs(interval);
+  });
+  readonly providerLabel = computed(() => {
+    const option = this.providers.find((item) => item.id === this.providerSignal());
+    return option?.label ?? 'Binance (Spot)';
+  });
+  readonly latestNearMiss = computed(() => {
+    const misses = this.store.nearMisses();
+    return misses.length ? misses[misses.length - 1] : null;
+  });
 
   get intervalValue(): Interval {
     return this.intervalSignal();
@@ -307,6 +563,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
   set intervalValue(value: Interval) {
     this.intervalSignal.set(value);
+  }
+
+  get providerValue(): DataProvider {
+    return this.providerSignal();
+  }
+
+  set providerValue(value: DataProvider) {
+    this.providerSignal.set(value);
+  }
+
+  onIntervalChange(value: Interval): void {
+    if (value === this.intervalSignal()) {
+      return;
+    }
+    this.intervalValue = value;
+    this.reload();
+  }
+
+  onProviderChange(value: DataProvider): void {
+    if (value === this.providerSignal()) {
+      return;
+    }
+    this.providerValue = value;
+    this.reload();
   }
 
   private pollHandle?: ReturnType<typeof setInterval>;
@@ -323,7 +603,7 @@ export class AppComponent implements OnInit, OnDestroy {
     this.loading.set(true);
     this.error.set(null);
 
-    this.api.getKlines('BTCUSDT', this.intervalSignal(), 600).subscribe({
+    this.api.getKlines(this.activeSymbol(), this.intervalSignal(), 600, this.providerSignal()).subscribe({
       next: (candles) => {
         this.store.candles.set(candles);
         this.loading.set(false);
@@ -355,5 +635,30 @@ export class AppComponent implements OnInit, OnDestroy {
       this.pollHandle = undefined;
     }
     this.auto.set(false);
+  }
+
+  private intervalToMs(interval: Interval): number {
+    switch (interval) {
+      case '1m':
+        return 60_000;
+      case '5m':
+        return 5 * 60_000;
+      case '15m':
+        return 15 * 60_000;
+      case '1h':
+        return 60 * 60_000;
+      case '4h':
+        return 4 * 60 * 60_000;
+      case '1d':
+        return 24 * 60 * 60_000;
+      default:
+        return 60 * 60_000;
+    }
+  }
+
+  private activeSymbol(): string {
+    const provider = this.providerSignal();
+    const option = this.providers.find((item) => item.id === provider);
+    return option?.symbol ?? 'BTCUSDT';
   }
 }
