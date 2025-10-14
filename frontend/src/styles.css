@@ -10,10 +10,10 @@ body {
 .card {
   background: rgba(15,23,42,.75);
   border: 1px solid rgba(148,163,184,.12);
-  border-radius: 16px;
-  padding: 24px;
-  box-shadow: 0 18px 45px rgba(15,23,42,.35);
-  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 14px 32px rgba(15,23,42,.3);
+  backdrop-filter: blur(8px);
 }
 
 .hero {
@@ -34,19 +34,19 @@ body {
 
 .layout-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-  gap: 24px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
   align-items: stretch;
 }
 
 .layout-grid--signals {
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
 .controls .control-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
 }
 
@@ -103,8 +103,8 @@ button[disabled] {
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
-  margin-top: 20px;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .status-card {
@@ -159,6 +159,36 @@ button[disabled] {
   border-color: rgba(148,163,184,.28);
 }
 
+.health-card .health-metrics {
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.health-card .metric-label {
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.health-card .metric-value {
+  display: block;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.health-card .metric-value.drawdown {
+  color: #f87171;
+}
+
+.health-card .health-summary {
+  margin: 6px 0 0;
+  font-size: .82rem;
+  color: #94a3b8;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
@@ -210,6 +240,149 @@ button[disabled] {
   color: #cbd5f5;
 }
 
+.chart-card .card-body {
+  gap: 12px;
+}
+
+.prediction-chart {
+  width: 100%;
+  height: 220px;
+  border-radius: 12px;
+  background: rgba(15,23,42,.4);
+  border: 1px solid rgba(148,163,184,.18);
+  overflow: hidden;
+  position: relative;
+}
+
+.prediction-chart svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.chart-panel {
+  fill: rgba(15,23,42,.65);
+}
+
+.chart-grid-line {
+  stroke: rgba(148,163,184,.16);
+  stroke-width: .6;
+}
+
+.chart-zero-line {
+  stroke: rgba(148,163,184,.35);
+  stroke-width: .9;
+  stroke-dasharray: 3 2;
+}
+
+.chart-tick-label {
+  fill: #94a3b8;
+  font-size: 4px;
+  dominant-baseline: middle;
+}
+
+.chart-area {
+  stroke: none;
+}
+
+.chart-line {
+  fill: none;
+  stroke: rgba(56,189,248,.9);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chart-bars {
+  mix-blend-mode: screen;
+}
+
+.chart-bar {
+  fill: rgba(148,163,184,.35);
+  stroke: rgba(148,163,184,.45);
+  stroke-width: .4;
+}
+
+.chart-bar.bar-positive {
+  fill: rgba(34,197,94,.28);
+  stroke: rgba(34,197,94,.6);
+}
+
+.chart-bar.bar-negative {
+  fill: rgba(248,113,113,.28);
+  stroke: rgba(248,113,113,.6);
+}
+
+.expected-marker {
+  stroke-width: .9;
+  stroke: rgba(148,163,184,.7);
+}
+
+.expected-marker.expected-up {
+  stroke: rgba(34,197,94,.75);
+}
+
+.expected-marker.expected-down {
+  stroke: rgba(248,113,113,.75);
+}
+
+.expected-marker.expected-flat {
+  fill: rgba(148,163,184,.75);
+  stroke: none;
+}
+
+.chart-point {
+  fill: rgba(148,163,184,.7);
+  stroke: rgba(15,23,42,.75);
+  stroke-width: .5;
+}
+
+.chart-point.point-win {
+  fill: rgba(74,222,128,.85);
+}
+
+.chart-point.point-loss {
+  fill: rgba(248,113,113,.85);
+}
+
+.chart-point.point-pending {
+  fill: rgba(148,163,184,.6);
+}
+
+.chart-x-axis {
+  stroke: rgba(148,163,184,.24);
+  stroke-width: .6;
+}
+
+.chart-x-label {
+  fill: #94a3b8;
+  font-size: 4.2px;
+  text-anchor: middle;
+}
+
+.chart-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 8px;
+  margin: 0;
+  align-items: center;
+}
+
+.chart-summary dt {
+  margin: 0 0 4px;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #94a3b8;
+}
+
+.chart-summary dd {
+  margin: 0;
+  font-size: .98rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
 .card-heading {
   display: flex;
   flex-direction: column;
@@ -232,17 +405,17 @@ button[disabled] {
 .card-body {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 14px;
 }
 
 .trend-body {
-  gap: 20px;
+  gap: 16px;
 }
 
 .trend-metrics {
   display: flex;
   flex-wrap: wrap;
-  gap: 18px;
+  gap: 14px;
 }
 
 .metric {
@@ -297,12 +470,12 @@ button[disabled] {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
 }
 
 .factor-list li {
-  padding: 14px 16px;
-  border-radius: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
   background: rgba(15,23,42,.45);
   border: 1px solid rgba(148,163,184,.12);
   display: flex;
@@ -380,18 +553,18 @@ button[disabled] {
 .advisor-rationale {
   margin: 0;
   color: #94a3b8;
-  font-size: .9rem;
-  line-height: 1.4;
+  font-size: .88rem;
+  line-height: 1.35;
 }
 
 .advisor-list {
   margin: 0;
-  padding-left: 20px;
+  padding-left: 18px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   color: #cbd5f5;
-  font-size: .9rem;
+  font-size: .88rem;
 }
 
 .advisor-list li {
@@ -474,7 +647,7 @@ button[disabled] {
 .card-list ul {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -482,8 +655,8 @@ button[disabled] {
 
 .card-list li {
   position: relative;
-  padding: 14px 16px 14px 24px;
-  border-radius: 12px;
+  padding: 12px 14px 12px 22px;
+  border-radius: 10px;
   background: rgba(15,23,42,.5);
   border: 1px solid rgba(148,163,184,.12);
 }
@@ -491,9 +664,9 @@ button[disabled] {
 .card-list li::before {
   content: '';
   position: absolute;
-  left: 10px;
-  top: 16px;
-  bottom: 16px;
+  left: 9px;
+  top: 14px;
+  bottom: 14px;
   width: 3px;
   border-radius: 999px;
   background: rgba(59,130,246,.35);
@@ -502,11 +675,11 @@ button[disabled] {
 .empty-state {
   margin: 0;
   color: #94a3b8;
-  font-size: .9rem;
+  font-size: .85rem;
 }
 
 .signals ul {
-  max-height: 340px;
+  max-height: 260px;
   overflow-y: auto;
 }
 
@@ -515,8 +688,8 @@ button[disabled] {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  font-size: .95rem;
+  gap: 8px;
+  font-size: .9rem;
   color: #cbd5f5;
 }
 

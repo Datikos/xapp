@@ -26,6 +26,117 @@ interface ProviderOption {
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
 
+      <section class="card chart-card" *ngIf="predictionChart() as chart">
+        <header class="card-heading">
+          <h2>Prediction vs Reality</h2>
+          <span class="card-subtitle">Cumulative return path and realised outcomes.</span>
+        </header>
+        <div class="card-body chart-body">
+          <div class="prediction-chart">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <defs>
+                <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="rgba(56,189,248,0.55)"></stop>
+                  <stop offset="100%" stop-color="rgba(56,189,248,0)"></stop>
+                </linearGradient>
+              </defs>
+              <rect class="chart-panel" x="0" y="0" width="100" height="100"></rect>
+              <g class="chart-grid">
+                <ng-container *ngFor="let tick of chart.yTicks">
+                  <line class="chart-grid-line" x1="0" [attr.y1]="tick.y" x2="100" [attr.y2]="tick.y"></line>
+                </ng-container>
+              </g>
+              <g class="chart-y-labels">
+                <ng-container *ngFor="let tick of chart.yTicks">
+                  <text class="chart-tick-label" x="1.6" [attr.y]="tick.y - 1.2">{{ formatChange(tick.value) }}</text>
+                </ng-container>
+              </g>
+              <path class="chart-area" [attr.d]="chart.areaPath" fill="url(#chartAreaGradient)"></path>
+              <path class="chart-line" [attr.d]="chart.linePath"></path>
+              <line class="chart-zero-line" x1="0" [attr.y1]="chart.zeroLine" x2="100" [attr.y2]="chart.zeroLine"></line>
+              <g class="chart-bars">
+                <ng-container *ngFor="let bar of chart.bars">
+                  <rect
+                    class="chart-bar"
+                    [class.bar-positive]="bar.positive"
+                    [class.bar-negative]="!bar.positive"
+                    [attr.x]="bar.x"
+                    [attr.y]="bar.y"
+                    [attr.width]="bar.width"
+                    [attr.height]="bar.height"
+                  >
+                    <title>
+                      {{ formatChange(bar.actual) }} outcome: {{ bar.outcome }} (expected
+                      {{ bar.expected === 1 ? 'LONG' : bar.expected === -1 ? 'SHORT' : 'FLAT' }})
+                    </title>
+                  </rect>
+                  <line
+                    *ngIf="bar.expected === 1"
+                    class="expected-marker expected-up"
+                    [attr.x1]="bar.center"
+                    [attr.x2]="bar.center"
+                    [attr.y1]="bar.y - 1.5"
+                    [attr.y2]="bar.y - 5"
+                  ></line>
+                  <line
+                    *ngIf="bar.expected === -1"
+                    class="expected-marker expected-down"
+                    [attr.x1]="bar.center"
+                    [attr.x2]="bar.center"
+                    [attr.y1]="chart.baselineY + 1"
+                    [attr.y2]="chart.baselineY + 5"
+                  ></line>
+                  <circle
+                    *ngIf="bar.expected === 0"
+                    class="expected-marker expected-flat"
+                    [attr.cx]="bar.center"
+                    [attr.cy]="chart.baselineY + 1.8"
+                    r="1.1"
+                  ></circle>
+                </ng-container>
+              </g>
+              <g class="chart-points">
+                <circle
+                  *ngFor="let point of chart.scatter"
+                  class="chart-point"
+                  [class.point-win]="point.outcome === 'WIN'"
+                  [class.point-loss]="point.outcome === 'LOSS'"
+                  [class.point-pending]="point.outcome === 'PENDING'"
+                  [attr.cx]="point.x"
+                  [attr.cy]="point.y"
+                  r="2.2"
+                >
+                  <title>
+                    {{ point.outcome }} {{ formatChange(point.actual) }} ({{ point.expected === 1 ? 'LONG' : point.expected === -1 ? 'SHORT' : 'FLAT' }})
+                    · {{ point.time | date: 'yyyy-MM-dd HH:mm' }}
+                  </title>
+                </circle>
+              </g>
+              <line class="chart-x-axis" x1="0" [attr.y1]="chart.xAxisY" x2="100" [attr.y2]="chart.xAxisY"></line>
+              <g class="chart-x-labels">
+                <ng-container *ngFor="let label of chart.xLabels">
+                  <text class="chart-x-label" [attr.x]="label.x" [attr.y]="chart.xAxisY + 6">{{ label.time | date: 'MM-dd' }}</text>
+                </ng-container>
+              </g>
+            </svg>
+          </div>
+          <dl class="chart-summary">
+            <div>
+              <dt>Correlation</dt>
+              <dd>{{ chart.correlation !== null ? (chart.correlation | number: '1.2-2') : 'n/a' }}</dd>
+            </div>
+            <div>
+              <dt>Generated Return</dt>
+              <dd>{{ formatChange(chart.totalReturn) }}</dd>
+            </div>
+            <div>
+              <dt>Evaluated Trades</dt>
+              <dd>{{ chart.scatter.length }}</dd>
+            </div>
+          </dl>
+        </div>
+      </section>
+
       <div class="layout-grid">
         <section class="card controls">
           <header class="card-heading">
@@ -138,6 +249,28 @@ interface ProviderOption {
                   </span>
                 </p>
               </article>
+
+              <article class="status-card health-card" *ngIf="!loading() && !error() && store.strategyHealth() as health">
+                <h3>Strategy Health</h3>
+                <div class="health-metrics">
+                  <div>
+                    <span class="metric-label">Expectancy</span>
+                    <span class="metric-value">{{ formatChange(health.expectancy) }}</span>
+                  </div>
+                  <div>
+                    <span class="metric-label">Profit Factor</span>
+                    <span class="metric-value">{{ formatProfitFactor(health.profitFactor) }}</span>
+                  </div>
+                  <div>
+                    <span class="metric-label">Max Drawdown</span>
+                    <span class="metric-value drawdown">{{ formatChange(health.maxDrawdown) }}</span>
+                  </div>
+                </div>
+                <p class="health-summary">
+                  Avg win {{ formatChange(health.averageGain) }} · Avg loss {{ formatChange(health.averageLoss) }} · Win streak {{ health.bestWinStreak }} / Loss streak
+                  {{ health.bestLossStreak }}
+                </p>
+              </article>
             </div>
           </div>
         </section>
@@ -238,7 +371,7 @@ interface ProviderOption {
           <div class="card-body">
             <p class="empty-state" *ngIf="!store.signals().length">No signals yet — load more candles or watch for the next MACD crossover.</p>
             <ul *ngIf="store.signals().length">
-              <li *ngFor="let signal of store.signals().slice(-50)">
+              <li *ngFor="let signal of store.signals().slice(-30)">
                 <div class="signal-meta">
                   <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
                   <span class="price">@ {{ signal.price | number: '1.0-0' }}</span>
@@ -258,7 +391,7 @@ interface ProviderOption {
           <div class="card-body">
             <p class="empty-state" *ngIf="!store.fastSignals().length">No quick momentum signals yet — watching EMA9/EMA21 crosses.</p>
             <ul *ngIf="store.fastSignals().length">
-              <li *ngFor="let signal of store.fastSignals().slice(-50)">
+              <li *ngFor="let signal of store.fastSignals().slice(-30)">
                 <div class="signal-meta">
                   <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
                   <span class="price">@ {{ signal.price | number: '1.0-0' }}</span>
@@ -277,7 +410,7 @@ interface ProviderOption {
           </header>
           <div class="card-body">
             <ul>
-              <li *ngFor="let validation of store.decisionValidations().slice(-20)">
+              <li *ngFor="let validation of store.decisionValidations().slice(-15)">
                 <div class="signal-meta">
                   <span class="pill" [class.long-pill]="validation.signalType === 'LONG'" [class.short-pill]="validation.signalType === 'SHORT'">{{ validation.signalType }}</span>
                   <span class="price">@ {{ validation.entryPrice | number: '1.0-0' }}</span>
@@ -392,15 +525,15 @@ interface ProviderOption {
         background: radial-gradient(circle at top, #101828, #0b1120 55%, #020617);
         color: #e2e8f0;
         font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-        padding: 24px 12px 48px;
+        padding: 20px 12px 36px;
       }
 
       .app {
         margin: 0 auto;
-        max-width: 960px;
+        max-width: 940px;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: 18px;
       }
     `,
   ],
@@ -472,6 +605,121 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     return validations[validations.length - 1].horizonCandles;
   });
+  readonly predictionChart = computed(() => {
+    const analytics = this.store.validationAnalytics();
+    if (!analytics || !analytics.points.length) {
+      return null;
+    }
+
+    const points = analytics.points;
+    const domainIndices = Math.max(points.length - 1, 1);
+    const xAt = (index: number) => (points.length === 1 ? 50 : (index / domainIndices) * 100);
+    const columnWidth = points.length ? 100 / points.length : 100;
+    const effectiveWidth = Math.min(12, Math.max(4, columnWidth * 0.6));
+
+    const marginTop = 8;
+    const lineHeight = 42;
+    const baselineY = marginTop + lineHeight;
+    const barMaxHeight = 24;
+    const xAxisY = baselineY + barMaxHeight + 4;
+
+    const allActuals = points.map((point) => point.actual);
+    const allCumulative = points.map((point) => point.cumulative);
+    let minValue = Math.min(0, ...allActuals, ...allCumulative);
+    let maxValue = Math.max(0, ...allActuals, ...allCumulative);
+    if (Math.abs(maxValue - minValue) < 1e-6) {
+      const pad = Math.max(Math.abs(maxValue) || 1, 1);
+      minValue -= pad / 2;
+      maxValue += pad / 2;
+    }
+    const range = maxValue - minValue || 1;
+    const yAt = (value: number) => {
+      const clamped = (value - minValue) / range;
+      return marginTop + (1 - clamped) * lineHeight;
+    };
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${xAt(index).toFixed(3)},${yAt(point.cumulative).toFixed(3)}`)
+      .join(' ');
+
+    const zeroLine = yAt(0);
+    const areaPathParts: string[] = [];
+    const firstX = xAt(0).toFixed(3);
+    const lastX = xAt(points.length - 1).toFixed(3);
+    areaPathParts.push(`M${firstX},${zeroLine.toFixed(3)}`);
+    points.forEach((point, index) => {
+      areaPathParts.push(`L${xAt(index).toFixed(3)},${yAt(point.cumulative).toFixed(3)}`);
+    });
+    areaPathParts.push(`L${lastX},${zeroLine.toFixed(3)}`);
+    areaPathParts.push('Z');
+    const areaPath = areaPathParts.join(' ');
+
+    const maxAbsActual = Math.max(...allActuals.map((value) => Math.abs(value)), 0.5);
+    const bars = points.map((point, index) => {
+      const center = points.length === 1 ? 50 : (index + 0.5) * columnWidth;
+      const width = effectiveWidth;
+      const x = Math.min(Math.max(0, center - width / 2), 100 - width);
+      const barMagnitude = (Math.abs(point.actual) / maxAbsActual) * barMaxHeight;
+      const height = Math.max(barMagnitude, 0.6);
+      const positive = point.actual >= 0;
+      const y = positive ? baselineY - height : baselineY;
+
+      return {
+        x,
+        y,
+        width,
+        height,
+        center,
+        positive,
+        expected: point.expected,
+        time: point.time,
+        actual: point.actual,
+        outcome: point.outcome,
+      };
+    });
+
+    const scatter = points.map((point, index) => ({
+      x: xAt(index),
+      y: yAt(point.cumulative),
+      outcome: point.outcome,
+      expected: point.expected,
+      actual: point.actual,
+      time: point.time,
+    }));
+
+    const tickCount = 5;
+    const yTicks = Array.from({ length: tickCount }, (_, idx) => {
+      const value = minValue + (range * idx) / (tickCount - 1);
+      return {
+        value,
+        y: yAt(value),
+      };
+    });
+
+    const labelIndices = Array.from(
+      new Set([0, Math.floor(points.length / 2), points.length - 1].filter((idx) => idx >= 0)),
+    ).sort((a, b) => a - b);
+    const xLabels = labelIndices.map((index) => ({
+      x: points.length === 1 ? 50 : (index / domainIndices) * 100,
+      time: points[index]?.time ?? null,
+    }));
+
+    return {
+      linePath,
+      areaPath,
+      scatter,
+      zeroLine,
+      bars,
+      minValue,
+      maxValue,
+      totalReturn: analytics.totalReturn,
+      correlation: analytics.correlation,
+      yTicks,
+      xLabels,
+      baselineY,
+      xAxisY,
+    };
+  });
 
   get intervalValue(): Interval {
     return this.intervalSignal();
@@ -498,6 +746,16 @@ export class AppComponent implements OnInit, OnDestroy {
     const rounded = change.toFixed(precision);
     const prefix = change > 0 ? '+' : '';
     return `${prefix}${rounded}%`;
+  }
+
+  formatProfitFactor(value: number | null): string {
+    if (value === null) {
+      return 'n/a';
+    }
+    if (!Number.isFinite(value)) {
+      return '∞';
+    }
+    return value >= 10 ? value.toFixed(1) : value.toFixed(2);
   }
 
   factorIntensity(factor: TrendFactor): number {

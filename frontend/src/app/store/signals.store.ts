@@ -66,6 +66,113 @@ export class SignalsStore {
     };
   });
 
+  readonly validationAnalytics = computed<DecisionValidationAnalytics | null>(() => {
+    const validations = this.decisionValidations().filter(
+      (item) => item.directionChangePct !== null && item.outcome !== 'PENDING',
+    );
+    if (!validations.length) {
+      return null;
+    }
+
+    let cumulative = 0;
+    const points: DecisionValidationPoint[] = validations.map((item, index) => {
+      const actual = item.directionChangePct as number;
+      const expected = item.signalType === 'LONG' ? 1 : item.signalType === 'SHORT' ? -1 : 0;
+      cumulative += actual;
+      return {
+        index,
+        time: item.signalTime,
+        expected,
+        actual,
+        outcome: item.outcome,
+        cumulative,
+      };
+    });
+
+    const expectedValues = points.map((point) => point.expected);
+    const actualValues = points.map((point) => point.actual);
+    const correlation = computeCorrelation(expectedValues, actualValues);
+    const totalReturn = points[points.length - 1]?.cumulative ?? 0;
+
+    return {
+      points,
+      totalReturn,
+      correlation,
+    };
+  });
+
+  readonly strategyHealth = computed<StrategyHealth | null>(() => {
+    const validations = this.decisionValidations().filter(
+      (item) => item.directionChangePct !== null && item.outcome !== 'PENDING',
+    );
+    if (!validations.length) {
+      return null;
+    }
+
+    const returns = validations.map((item) => item.directionChangePct as number);
+    const gains = returns.filter((value) => value > 0);
+    const losses = returns.filter((value) => value < 0);
+    const sum = (values: number[]) => values.reduce((acc, value) => acc + value, 0);
+    const avg = (values: number[]) => (values.length ? sum(values) / values.length : null);
+
+    const totalGain = sum(gains);
+    const totalLoss = Math.abs(sum(losses));
+    const profitFactor =
+      totalLoss === 0 ? (totalGain > 0 ? Number.POSITIVE_INFINITY : null) : totalGain / totalLoss || null;
+
+    const expectancy = sum(returns) / returns.length;
+    const averageGain = avg(gains);
+    const averageLoss = avg(losses);
+
+    const cumulative: number[] = [];
+    returns.reduce((acc, value, index) => {
+      const current = acc + value;
+      cumulative[index] = current;
+      return current;
+    }, 0);
+
+    let peak = cumulative[0] ?? 0;
+    let maxDrawdown = 0;
+    for (const value of cumulative) {
+      peak = Math.max(peak, value);
+      maxDrawdown = Math.min(maxDrawdown, value - peak);
+    }
+
+    let currentWinStreak = 0;
+    let bestWinStreak = 0;
+    let currentLossStreak = 0;
+    let bestLossStreak = 0;
+    for (const value of returns) {
+      if (value > 0) {
+        currentWinStreak += 1;
+        bestWinStreak = Math.max(bestWinStreak, currentWinStreak);
+        currentLossStreak = 0;
+      } else if (value < 0) {
+        currentLossStreak += 1;
+        bestLossStreak = Math.max(bestLossStreak, currentLossStreak);
+        currentWinStreak = 0;
+      } else {
+        currentWinStreak = 0;
+        currentLossStreak = 0;
+      }
+    }
+
+    const latest = validations[validations.length - 1];
+
+    return {
+      tradesEvaluated: validations.length,
+      expectancy,
+      averageGain,
+      averageLoss,
+      profitFactor,
+      maxDrawdown,
+      bestWinStreak,
+      bestLossStreak,
+      lastOutcome: latest.outcome,
+      lastReturn: latest.directionChangePct ?? null,
+    };
+  });
+
   constructor() {
     effect(() => {
       const data = this.candles();
@@ -98,4 +205,68 @@ export interface DecisionValidationSummary {
   winRate: number | null;
   lastOutcome: DecisionValidation['outcome'] | null;
   lastChangePct: number | null;
+}
+
+export interface DecisionValidationAnalytics {
+  points: DecisionValidationPoint[];
+  totalReturn: number;
+  correlation: number | null;
+}
+
+export interface DecisionValidationPoint {
+  index: number;
+  time: number;
+  expected: 1 | -1 | 0;
+  actual: number;
+  outcome: DecisionValidation['outcome'];
+  cumulative: number;
+}
+
+export interface StrategyHealth {
+  tradesEvaluated: number;
+  expectancy: number;
+  averageGain: number | null;
+  averageLoss: number | null;
+  profitFactor: number | null;
+  maxDrawdown: number;
+  bestWinStreak: number;
+  bestLossStreak: number;
+  lastOutcome: DecisionValidation['outcome'];
+  lastReturn: number | null;
+}
+
+function computeCorrelation(xValues: number[], yValues: number[]): number | null {
+  const length = Math.min(xValues.length, yValues.length);
+  if (length < 2) {
+    return null;
+  }
+
+  let sumX = 0;
+  let sumY = 0;
+  for (let index = 0; index < length; index++) {
+    sumX += xValues[index];
+    sumY += yValues[index];
+  }
+
+  const meanX = sumX / length;
+  const meanY = sumY / length;
+
+  let numerator = 0;
+  let sumXDiffSq = 0;
+  let sumYDiffSq = 0;
+
+  for (let index = 0; index < length; index++) {
+    const xDiff = xValues[index] - meanX;
+    const yDiff = yValues[index] - meanY;
+    numerator += xDiff * yDiff;
+    sumXDiffSq += xDiff * xDiff;
+    sumYDiffSq += yDiff * yDiff;
+  }
+
+  const denominator = Math.sqrt(sumXDiffSq * sumYDiffSq);
+  if (!Number.isFinite(denominator) || denominator === 0) {
+    return null;
+  }
+
+  return numerator / denominator;
 }
