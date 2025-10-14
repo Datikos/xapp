@@ -5,6 +5,8 @@ import { FormsModule } from '@angular/forms';
 import { SignalsStore } from './store/signals.store';
 import { Interval } from './models/candle.model';
 import { DataProvider, MarketDataService } from './services/market-data.service';
+import { TrendFactor } from './lib/strategy';
+import { IncomeAdvice, generateIncomeAdvice } from './lib/advisor';
 
 interface ProviderOption {
   id: DataProvider;
@@ -24,138 +26,316 @@ interface ProviderOption {
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
 
-      <section class="card controls">
-        <h2>Data Controls</h2>
-        <div class="control-row">
-          <label>
-            Provider
-            <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
-              <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
-            </select>
-          </label>
-          <label>
-            Interval
-            <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
-              <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
-            </select>
-          </label>
-          <button type="button" (click)="reload()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Reload now' }}</button>
-          <button type="button" (click)="toggleAuto()">{{ auto() ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
-          <span class="trend" [class.bullish]="store.trend() === 'BULL'" [class.bearish]="store.trend() === 'BEAR'">
-            Trend: {{ store.trend() }}
-          </span>
-        </div>
-        <p class="status" *ngIf="error()">⚠️ {{ error() }}</p>
-        <p class="status" *ngIf="!error() && loading()">Fetching latest candles…</p>
-        <p class="status" *ngIf="!loading() && store.latestSignal()">
-          Latest signal: <strong [class.long]="store.latestSignal()?.type === 'LONG'" [class.short]="store.latestSignal()?.type === 'SHORT'">
-            {{ store.latestSignal()?.type }}
-          </strong>
-          &#64; {{ store.latestSignal()?.price | number: '1.0-0' }}
-          on {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}
-        </p>
-        <p class="status subtle" *ngIf="!loading() && store.latestFastSignal()">
-          Momentum ping: <strong [class.long]="store.latestFastSignal()?.type === 'LONG'" [class.short]="store.latestFastSignal()?.type === 'SHORT'">
-            {{ store.latestFastSignal()?.type }}
-          </strong>
-          &#64; {{ store.latestFastSignal()?.price | number: '1.0-0' }}
-          on {{ store.latestFastSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}
-        </p>
-        <p class="status subtle" *ngIf="!loading() && !error() && store.lastCandle() as last">
-          Last {{ intervalValue }} candle closed at {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}
-        </p>
-        <p class="status subtle" *ngIf="!loading() && !error() && store.lastUpdated() as updated">
-          Data refreshed at {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}
-        </p>
-        <p class="status subtle" *ngIf="!loading() && !error()">
-          Source: {{ providerLabel() }}
-        </p>
-        <p class="status warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
-          No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }} — waiting for indicator confluence.
-        </p>
-        <p class="status subtle" *ngIf="!loading() && !error() && latestNearMiss() as near">
-          Closest setup: {{ near.bias }} bias, missing {{ near.missing.join(', ') }}
-          at {{ near.time | date: 'yyyy-MM-dd HH:mm' }}
-        </p>
-      </section>
-
-      <section class="card insights" *ngIf="store.trendDetails() as trendDetails">
-        <h2>Trend Confidence</h2>
-        <p class="trend-summary">
-          Overall bias:
-          <strong [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
-            {{ trendDetails.direction }}
-          </strong>
-          • Confidence {{ trendDetails.confidence }}%
-          <span class="trend-score">Score {{ trendDetails.score }}</span>
-        </p>
-        <div class="confidence-bar" aria-hidden="true">
-          <div class="confidence-fill" [style.width.%]="trendDetails.confidence"></div>
-        </div>
-        <ul class="insight-list">
-          <li
-            *ngFor="let factor of trendDetails.factors"
-            [class.bullish]="factor.direction === 'BULL'"
-            [class.bearish]="factor.direction === 'BEAR'"
-          >
-            <div class="insight-header">
-              <span class="title">{{ factor.label }}</span>
-              <span class="direction">{{ factor.direction }}</span>
+      <div class="layout-grid">
+        <section class="card controls">
+          <header class="card-heading">
+            <h2>Data Controls</h2>
+            <span class="card-subtitle">Choose your market feed and refresh cadence.</span>
+          </header>
+          <div class="card-body">
+            <div class="control-row">
+              <label>
+                Provider
+                <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
+                  <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
+                </select>
+              </label>
+              <label>
+                Interval
+                <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
+                  <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
+                </select>
+              </label>
+              <button type="button" (click)="reload()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Reload now' }}</button>
+              <button type="button" (click)="toggleAuto()">{{ auto() ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
+              <span class="trend" [class.bullish]="store.trend() === 'BULL'" [class.bearish]="store.trend() === 'BEAR'">
+                Trend: {{ store.trend() }}
+              </span>
             </div>
-            <p>{{ factor.detail }}</p>
-          </li>
-        </ul>
-      </section>
 
-      <section class="card signals">
-        <h2>Strategy Signals</h2>
-        <p *ngIf="!store.signals().length">No signals yet — load more candles or wait for a MACD crossover.</p>
-        <ul *ngIf="store.signals().length">
-          <li *ngFor="let signal of store.signals().slice(-50); let last = last">
-            <strong [class.long]="signal.type === 'LONG'" [class.short]="signal.type === 'SHORT'">{{ signal.type }}</strong>
-            &#64; {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
-            <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-          </li>
-        </ul>
-      </section>
+            <div class="status-grid">
+              <article class="status-card danger" *ngIf="error() as message">
+                <h3>Data Error</h3>
+                <p>{{ message }}</p>
+              </article>
 
-      <section class="card fast-signals">
-        <h2>Momentum Scout Signals</h2>
-        <p *ngIf="!store.fastSignals().length">No quick momentum signals yet — watching EMA9/EMA21 crosses.</p>
-        <ul *ngIf="store.fastSignals().length">
-          <li *ngFor="let signal of store.fastSignals().slice(-50)">
-            <strong [class.long]="signal.type === 'LONG'" [class.short]="signal.type === 'SHORT'">{{ signal.type }}</strong>
-            &#64; {{ signal.price | number: '1.0-0' }} — {{ signal.reason }} —
-            <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-          </li>
-        </ul>
-      </section>
+              <article class="status-card muted" *ngIf="!error() && loading()">
+                <h3>Syncing</h3>
+                <p>Fetching latest candles…</p>
+              </article>
 
-      <section class="card diagnostics" *ngIf="store.nearMisses().length">
-        <h2>Near Miss Monitor</h2>
-        <p>Setups that were one criterion away from triggering a full signal.</p>
-        <ul>
-          <li *ngFor="let miss of store.nearMisses().slice(-10)">
-            <div class="miss-header">
-              <span class="bias" [class.long]="miss.bias === 'LONG'" [class.short]="miss.bias === 'SHORT'">{{ miss.bias }}</span>
-              <time>{{ miss.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+              <article class="status-card accent" *ngIf="!loading() && store.latestSignal() as signal">
+                <h3>Latest Signal</h3>
+                <p>
+                  <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
+                  @ {{ signal.price | number: '1.0-0' }}
+                </p>
+                <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+              </article>
+
+              <article class="status-card highlight" *ngIf="!loading() && store.latestSignal() as decision">
+                <h3>Last Decision</h3>
+                <p>
+                  <span class="pill" [class.long-pill]="decision.type === 'LONG'" [class.short-pill]="decision.type === 'SHORT'">{{ decision.type }}</span>
+                  decided {{ decision.time | date: 'yyyy-MM-dd HH:mm' }}
+                </p>
+                <p class="signal-reason">{{ decision.reason }}</p>
+                <ng-container *ngIf="store.latestValidation() as validation">
+                  <p>
+                    Outcome
+                    <span class="outcome-pill" [class.outcome-win]="validation.outcome === 'WIN'" [class.outcome-loss]="validation.outcome === 'LOSS'" [class.outcome-pending]="validation.outcome === 'PENDING'">
+                      {{ validation.outcome }}
+                    </span>
+                    <span *ngIf="validation.directionChangePct !== null">
+                      — {{ formatChange(validation.directionChangePct) }} after {{ validation.actualHorizon ?? validation.horizonCandles }} bars
+                    </span>
+                  </p>
+                  <p *ngIf="validation.evaluationTime">
+                    Checked at {{ validation.evaluationTime | date: 'yyyy-MM-dd HH:mm' }}
+                  </p>
+                </ng-container>
+                <p *ngIf="!store.latestValidation()">Outcome validation pending.</p>
+              </article>
+
+              <article class="status-card" *ngIf="!loading() && store.latestFastSignal() as fast">
+                <h3>Momentum Ping</h3>
+                <p>
+                  <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
+                  @ {{ fast.price | number: '1.0-0' }}
+                </p>
+                <time>{{ fast.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+              </article>
+
+              <article class="status-card" *ngIf="!loading() && !error() && store.lastCandle() as last">
+                <h3>Market Clock</h3>
+                <p>Last {{ intervalValue }} candle closed {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}</p>
+                <p *ngIf="store.lastUpdated() as updated">Refreshed {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
+                <span class="meta">Source: {{ providerLabel() }}</span>
+              </article>
+
+              <article class="status-card warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
+                <h3>Awaiting Confirmation</h3>
+                <p>No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}</p>
+              </article>
+
+              <article class="status-card" *ngIf="!loading() && !error() && latestNearMiss() as near">
+                <h3>Closest Setup</h3>
+                <p>{{ near.bias }} bias pending {{ near.missing.join(', ') }}</p>
+                <time>{{ near.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+              </article>
+
+              <article class="status-card" *ngIf="!loading() && !error() && store.validationSummary() as summary">
+                <h3>Decision Scorecard</h3>
+                <p>Win rate: {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}</p>
+                <p>Wins / Losses / Pending: {{ summary.wins }} / {{ summary.losses }} / {{ summary.pending }}</p>
+                <p *ngIf="summary.lastOutcome">
+                  Last outcome
+                  <span class="outcome-pill" [class.outcome-win]="summary.lastOutcome === 'WIN'" [class.outcome-loss]="summary.lastOutcome === 'LOSS'" [class.outcome-pending]="summary.lastOutcome === 'PENDING'">
+                    {{ summary.lastOutcome }}
+                  </span>
+                  <span *ngIf="summary.lastChangePct !== null">
+                    ({{ formatChange(summary.lastChangePct) }})
+                  </span>
+                </p>
+              </article>
             </div>
-            <p class="miss-detail">
-              Satisfied: {{ miss.satisfied.join(', ') || 'none' }}<br />
-              Missing: {{ miss.missing.join(', ') || 'none' }}
+          </div>
+        </section>
+
+        <section class="card insights" *ngIf="store.trendDetails() as trendDetails">
+          <header class="card-heading">
+            <h2>Trend Confidence</h2>
+            <span class="card-subtitle">EMA, MACD, and RSI blend for current bias.</span>
+          </header>
+          <div class="card-body trend-body">
+            <div class="trend-metrics">
+              <div class="metric">
+                <span class="metric-label">Bias</span>
+                <span class="metric-value" [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
+                  {{ trendDetails.direction }}
+                </span>
+                <span class="metric-note">{{ trendNarrative() }}</span>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Confidence</span>
+                <span class="metric-value">{{ trendDetails.confidence }}%</span>
+                <div class="metric-bar">
+                  <div class="metric-bar-fill" [style.width.%]="trendDetails.confidence"></div>
+                </div>
+              </div>
+              <div class="metric">
+                <span class="metric-label">Score</span>
+                <span class="metric-value">{{ trendDetails.score }}</span>
+                <span class="metric-note">Range −4 to +4</span>
+              </div>
+            </div>
+
+            <ul class="factor-list">
+              <li *ngFor="let factor of trendDetails.factors" [class.bullish]="factor.direction === 'BULL'" [class.bearish]="factor.direction === 'BEAR'">
+                <div class="factor-row">
+                  <span class="pill small" [class.long-pill]="factor.direction === 'BULL'" [class.short-pill]="factor.direction === 'BEAR'">
+                    {{ factor.direction }}
+                  </span>
+                  <span class="factor-label">{{ factor.label }}</span>
+                  <span class="factor-weight">w{{ factor.weight }}</span>
+                </div>
+                <div class="factor-bar" [class.positive]="factor.contribution > 0" [class.negative]="factor.contribution < 0">
+                  <div class="factor-bar-fill" [style.width.%]="factorIntensity(factor)"></div>
+                </div>
+                <p class="factor-detail">{{ factor.detail }}</p>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="card advisor" *ngIf="incomeAdvice() as advice">
+          <header class="card-heading">
+            <h2>Income Action Advisor</h2>
+            <span class="card-subtitle">Suggested moves to compound trading income.</span>
+          </header>
+          <div class="card-body">
+            <div class="advisor-pills">
+              <span class="advisor-pill positive" *ngIf="advice.tone === 'positive'">Upside Bias</span>
+              <span class="advisor-pill caution" *ngIf="advice.tone === 'caution'">Capital Protection</span>
+              <span class="advisor-pill neutral" *ngIf="advice.tone === 'neutral'">Hold Fire</span>
+              <span class="advisor-pill">Confidence {{ advice.confidenceScore }}%</span>
+              <span class="advisor-pill muted">Risk {{ advice.riskScore }}%</span>
+            </div>
+            <p class="advisor-headline" [class.positive]="advice.tone === 'positive'" [class.caution]="advice.tone === 'caution'">
+              {{ advice.headline }}
             </p>
-          </li>
-        </ul>
-      </section>
+            <p class="advisor-rationale">{{ advice.rationale }}</p>
+            <div class="advisor-metrics">
+              <div class="metric-card" *ngIf="advice.metrics.volatilityPct !== null">
+                <span class="metric-label">Realised Volatility</span>
+                <span class="metric-value">{{ advice.metrics.volatilityPct | number: '1.1-1' }}%</span>
+                <span class="metric-note">ATR₁₄ / Price</span>
+              </div>
+              <div class="metric-card" *ngIf="advice.metrics.signalFreshnessMinutes !== null">
+                <span class="metric-label">Last Signal Age</span>
+                <span class="metric-value">{{ advice.metrics.signalFreshnessMinutes }}m</span>
+                <span class="metric-note">Time since confluence trigger</span>
+              </div>
+              <div class="metric-card" *ngIf="advice.metrics.momentumScore !== null">
+                <span class="metric-label">Momentum Score</span>
+                <span class="metric-value">{{ advice.metrics.momentumScore | number: '1.0-0' }}</span>
+                <span class="metric-note">Blend of MACD • RSI • Price vs EMA</span>
+              </div>
+            </div>
+            <ul class="advisor-list">
+              <li *ngFor="let item of advice.suggestions">{{ item }}</li>
+            </ul>
+          </div>
+        </section>
+      </div>
+
+      <div class="layout-grid layout-grid--signals">
+        <section class="card signals card-list">
+          <header class="card-heading">
+            <h2>Strategy Signals</h2>
+            <span class="card-subtitle">Full confluence entries that align trend + momentum.</span>
+          </header>
+          <div class="card-body">
+            <p class="empty-state" *ngIf="!store.signals().length">No signals yet — load more candles or watch for the next MACD crossover.</p>
+            <ul *ngIf="store.signals().length">
+              <li *ngFor="let signal of store.signals().slice(-50)">
+                <div class="signal-meta">
+                  <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
+                  <span class="price">@ {{ signal.price | number: '1.0-0' }}</span>
+                  <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+                </div>
+                <p class="signal-reason">{{ signal.reason }}</p>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="card fast-signals card-list">
+          <header class="card-heading">
+            <h2>Momentum Scout Signals</h2>
+            <span class="card-subtitle">Fast EMA9 / EMA21 crosses to flag early momentum shifts.</span>
+          </header>
+          <div class="card-body">
+            <p class="empty-state" *ngIf="!store.fastSignals().length">No quick momentum signals yet — watching EMA9/EMA21 crosses.</p>
+            <ul *ngIf="store.fastSignals().length">
+              <li *ngFor="let signal of store.fastSignals().slice(-50)">
+                <div class="signal-meta">
+                  <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
+                  <span class="price">@ {{ signal.price | number: '1.0-0' }}</span>
+                  <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+                </div>
+                <p class="signal-reason">{{ signal.reason }}</p>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="card validations card-list" *ngIf="hasValidations()">
+          <header class="card-heading">
+            <h2>Decision Validation Log</h2>
+            <span class="card-subtitle">Evaluated {{ validationHorizon() }}-bar outcome horizon.</span>
+          </header>
+          <div class="card-body">
+            <ul>
+              <li *ngFor="let validation of store.decisionValidations().slice(-20)">
+                <div class="signal-meta">
+                  <span class="pill" [class.long-pill]="validation.signalType === 'LONG'" [class.short-pill]="validation.signalType === 'SHORT'">{{ validation.signalType }}</span>
+                  <span class="price">@ {{ validation.entryPrice | number: '1.0-0' }}</span>
+                  <time>{{ validation.signalTime | date: 'yyyy-MM-dd HH:mm' }}</time>
+                </div>
+                <p class="signal-reason">
+                  Outcome
+                  <span class="outcome-pill" [class.outcome-win]="validation.outcome === 'WIN'" [class.outcome-loss]="validation.outcome === 'LOSS'" [class.outcome-pending]="validation.outcome === 'PENDING'">
+                    {{ validation.outcome }}
+                  </span>
+                  <span *ngIf="validation.directionChangePct !== null">
+                    {{ formatChange(validation.directionChangePct) }} after {{ validation.actualHorizon ?? validation.horizonCandles }} bars
+                  </span>
+                </p>
+                <p class="signal-reason" *ngIf="validation.evaluationTime">
+                  Checked at {{ validation.evaluationTime | date: 'yyyy-MM-dd HH:mm' }} · Exit @ {{ validation.exitPrice | number: '1.0-0' }}
+                </p>
+              </li>
+            </ul>
+          </div>
+        </section>
+
+        <section class="card diagnostics card-list" *ngIf="store.nearMisses().length">
+          <header class="card-heading">
+            <h2>Near Miss Monitor</h2>
+            <span class="card-subtitle">Setups that missed by one criterion — watch for confirmation.</span>
+          </header>
+          <div class="card-body">
+            <ul>
+              <li *ngFor="let miss of store.nearMisses().slice(-10)">
+                <div class="signal-meta">
+                  <span class="pill" [class.long-pill]="miss.bias === 'LONG'" [class.short-pill]="miss.bias === 'SHORT'">{{ miss.bias }}</span>
+                  <time>{{ miss.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+                </div>
+                <p class="signal-reason">
+                  <strong>Satisfied:</strong> {{ miss.satisfied.join(', ') || 'none' }}
+                </p>
+                <p class="signal-reason">
+                  <strong>Missing:</strong> {{ miss.missing.join(', ') || 'none' }}
+                </p>
+              </li>
+            </ul>
+          </div>
+        </section>
+      </div>
 
       <section class="card playbook">
-        <h2>6-Step Market Framework</h2>
-        <ol>
-          <li>
-            <h3>1. Check Market Trend (Macro Direction)</h3>
-            <ul>
-              <li>Focus on 4H, 1D, and 1W candles to understand the dominant direction.</li>
-              <li>Price above the 200 EMA ⇒ bullish bias, prioritise long setups.</li>
+        <header class="card-heading">
+          <h2>6-Step Market Framework</h2>
+          <span class="card-subtitle">Checklist before committing capital.</span>
+        </header>
+        <div class="card-body">
+          <ol>
+            <li>
+              <h3>1. Check Market Trend (Macro Direction)</h3>
+              <ul>
+                <li>Focus on 4H, 1D, and 1W candles to understand the dominant direction.</li>
+                <li>Price above the 200 EMA ⇒ bullish bias, prioritise long setups.</li>
               <li>Price below the 200 EMA ⇒ bearish bias, prioritise short setups.</li>
               <li>Validate with market structure: higher highs & higher lows for bulls, or lower highs & lower lows for bears.</li>
             </ul>
@@ -198,8 +378,9 @@ interface ProviderOption {
               <li>Place stop-losses beyond the most recent swing and risk only 1–2% of capital per trade.</li>
               <li>Avoid chasing moves after large impulsive candles—let the market confirm strength.</li>
             </ul>
-          </li>
-        </ol>
+            </li>
+          </ol>
+        </div>
       </section>
     </main>
   `,
@@ -221,305 +402,6 @@ interface ProviderOption {
         flex-direction: column;
         gap: 24px;
       }
-
-      .card {
-        background: rgba(15, 23, 42, 0.75);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-        border-radius: 16px;
-        padding: 24px;
-        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.35);
-        backdrop-filter: blur(10px);
-      }
-
-      .hero {
-        text-align: center;
-        padding-bottom: 8px;
-      }
-
-      .hero h1 {
-        margin: 0 0 8px;
-        font-size: clamp(1.8rem, 4vw, 2.6rem);
-        font-weight: 700;
-      }
-
-      .hero p {
-        margin: 0;
-        color: #94a3b8;
-      }
-
-      .controls .control-row {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 12px;
-        align-items: center;
-      }
-
-      label {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        font-weight: 600;
-        color: #cbd5f5;
-      }
-
-      select,
-      button {
-        border-radius: 8px;
-        border: 1px solid rgba(148, 163, 184, 0.25);
-        padding: 8px 14px;
-        background: rgba(15, 23, 42, 0.6);
-        color: inherit;
-        font-size: 0.95rem;
-      }
-
-      button {
-        cursor: pointer;
-        transition: transform 0.15s ease, background 0.15s ease;
-      }
-
-      button:hover {
-        transform: translateY(-1px);
-        background: rgba(59, 130, 246, 0.18);
-      }
-
-      button[disabled] {
-        cursor: wait;
-        opacity: 0.6;
-      }
-
-      .trend {
-        padding: 6px 14px;
-        border-radius: 999px;
-        font-weight: 600;
-        background: rgba(148, 163, 184, 0.2);
-      }
-
-      .trend.bullish {
-        background: rgba(34, 197, 94, 0.16);
-        color: #bbf7d0;
-      }
-
-      .trend.bearish {
-        background: rgba(248, 113, 113, 0.16);
-        color: #fecaca;
-      }
-
-      .status {
-        margin: 12px 0 0;
-        color: #94a3b8;
-      }
-
-      .status.subtle {
-        color: #64748b;
-      }
-
-      .status.warning {
-        color: #fca5a5;
-      }
-
-      .insights .trend-summary {
-        margin-bottom: 12px;
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        align-items: baseline;
-        color: #cbd5f5;
-      }
-
-      .trend-score {
-        color: #94a3b8;
-        font-size: 0.9rem;
-      }
-
-      .confidence-bar {
-        height: 8px;
-        border-radius: 999px;
-        background: rgba(148, 163, 184, 0.2);
-        overflow: hidden;
-        margin-bottom: 16px;
-      }
-
-      .confidence-fill {
-        height: 100%;
-        background: linear-gradient(90deg, #22c55e, #3b82f6);
-      }
-
-      .insight-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-      }
-
-      .insight-list li {
-        background: rgba(15, 23, 42, 0.45);
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 12px;
-        padding: 12px 14px;
-      }
-
-      .insight-list li.bullish {
-        border-color: rgba(34, 197, 94, 0.35);
-      }
-
-      .insight-list li.bearish {
-        border-color: rgba(248, 113, 113, 0.35);
-      }
-
-      .insight-header {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        font-weight: 600;
-        margin-bottom: 6px;
-      }
-
-      .insight-header .title {
-        color: #e2e8f0;
-      }
-
-      .insight-header .direction {
-        color: #94a3b8;
-        font-size: 0.85rem;
-      }
-
-      .insight-list p {
-        margin: 0;
-        color: #94a3b8;
-        font-size: 0.9rem;
-      }
-
-      .signals ul {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-        max-height: 340px;
-        overflow-y: auto;
-      }
-
-      .signals li {
-        padding: 12px 16px;
-        border-radius: 12px;
-        background: rgba(15, 23, 42, 0.55);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-      }
-
-      .fast-signals ul,
-      .diagnostics ul {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        margin: 0;
-        padding: 0;
-        list-style: none;
-      }
-
-      .fast-signals li,
-      .diagnostics li {
-        padding: 12px 16px;
-        border-radius: 12px;
-        background: rgba(15, 23, 42, 0.45);
-        border: 1px solid rgba(148, 163, 184, 0.12);
-      }
-
-      .signals strong.long {
-        color: #4ade80;
-      }
-
-      .signals strong.short {
-        color: #f87171;
-      }
-
-      strong.long {
-        color: #4ade80;
-      }
-
-      strong.short {
-        color: #f87171;
-      }
-
-      .signals time {
-        color: #94a3b8;
-        font-size: 0.85rem;
-      }
-
-      .fast-signals time,
-      .diagnostics time {
-        color: #94a3b8;
-        font-size: 0.85rem;
-      }
-
-      .diagnostics p {
-        margin: 4px 0 0;
-        color: #94a3b8;
-        font-size: 0.9rem;
-      }
-
-      .miss-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: baseline;
-        gap: 12px;
-        font-weight: 600;
-        color: #cbd5f5;
-      }
-
-      .miss-header .bias.long {
-        color: #4ade80;
-      }
-
-      .miss-header .bias.short {
-        color: #f87171;
-      }
-
-      .playbook ol {
-        margin: 0;
-        padding-left: 20px;
-        display: flex;
-        flex-direction: column;
-        gap: 18px;
-      }
-
-      .playbook h3 {
-        margin: 0 0 10px;
-        font-size: 1.1rem;
-      }
-
-      .playbook ul {
-        margin: 0;
-        padding-left: 18px;
-        color: #cbd5f5;
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-      }
-
-      @media (max-width: 640px) {
-        .controls .control-row {
-          flex-direction: column;
-          align-items: stretch;
-        }
-
-        select,
-        button,
-        .trend {
-          width: 100%;
-          text-align: center;
-        }
-
-        .insight-list {
-          gap: 12px;
-        }
-
-        .signals ul {
-          max-height: 440px;
-        }
-      }
     `,
   ],
 })
@@ -533,7 +415,7 @@ export class AppComponent implements OnInit, OnDestroy {
     { id: 'coinbase', label: 'Coinbase Advanced', symbol: 'BTC-USD' },
   ];
 
-  private readonly intervalSignal = signal<Interval>('1h');
+  private readonly intervalSignal = signal<Interval>('1m');
   private readonly providerSignal = signal<DataProvider>('binance');
   readonly auto = signal(false);
   readonly loading = signal(false);
@@ -552,9 +434,43 @@ export class AppComponent implements OnInit, OnDestroy {
     const option = this.providers.find((item) => item.id === this.providerSignal());
     return option?.label ?? 'Binance (Spot)';
   });
+  readonly trendNarrative = computed(() => {
+    const details = this.store.trendDetails();
+    if (!details) {
+      return 'Awaiting indicator alignment.';
+    }
+    const { direction, confidence, score } = details;
+    if (direction === 'NEUTRAL') {
+      return confidence >= 45 ? 'Mixed structure — watch for breakout.' : 'No dominant bias yet.';
+    }
+    const tone = confidence >= 75 ? 'Strong' : confidence >= 55 ? 'Building' : 'Fragile';
+    const bias = direction === 'BULL' ? 'bullish' : 'bearish';
+    const alignment = Math.abs(score) >= 3 ? 'with clear confluence' : Math.abs(score) >= 2 ? 'with supportive signals' : 'but still tentative';
+    return `${tone} ${bias} bias ${alignment}`;
+  });
   readonly latestNearMiss = computed(() => {
     const misses = this.store.nearMisses();
     return misses.length ? misses[misses.length - 1] : null;
+  });
+  readonly incomeAdvice = computed<IncomeAdvice>(() =>
+    generateIncomeAdvice({
+      trendDetails: this.store.trendDetails(),
+      latestSignal: this.store.latestSignal(),
+      latestFastSignal: this.store.latestFastSignal(),
+      nearMiss: this.latestNearMiss(),
+      candles: this.store.candles(),
+      intervalMs: this.intervalToMs(this.intervalSignal()),
+      fetchError: this.error(),
+      lastCandleTime: this.store.lastCandle()?.closeTime ?? null,
+    }),
+  );
+  readonly hasValidations = computed(() => this.store.decisionValidations().length > 0);
+  readonly validationHorizon = computed(() => {
+    const validations = this.store.decisionValidations();
+    if (!validations.length) {
+      return null;
+    }
+    return validations[validations.length - 1].horizonCandles;
   });
 
   get intervalValue(): Interval {
@@ -571,6 +487,25 @@ export class AppComponent implements OnInit, OnDestroy {
 
   set providerValue(value: DataProvider) {
     this.providerSignal.set(value);
+  }
+
+  formatChange(change: number | null): string {
+    if (change === null || !Number.isFinite(change)) {
+      return 'n/a';
+    }
+    const magnitude = Math.abs(change);
+    const precision = magnitude >= 10 ? 0 : 1;
+    const rounded = change.toFixed(precision);
+    const prefix = change > 0 ? '+' : '';
+    return `${prefix}${rounded}%`;
+  }
+
+  factorIntensity(factor: TrendFactor): number {
+    const weight = factor.weight || 1;
+    if (weight === 0) {
+      return 0;
+    }
+    return Math.min(100, Math.round((Math.abs(factor.contribution) / weight) * 100));
   }
 
   onIntervalChange(value: Interval): void {
@@ -661,4 +596,5 @@ export class AppComponent implements OnInit, OnDestroy {
     const option = this.providers.find((item) => item.id === provider);
     return option?.symbol ?? 'BTCUSDT';
   }
+
 }

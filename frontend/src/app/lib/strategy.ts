@@ -3,6 +3,8 @@ import { ema, macd, rsi } from './indicators';
 
 export type SignalType = 'LONG' | 'SHORT' | 'FLAT';
 
+type ConditionCheck = { label: string; ok: boolean };
+
 export interface Signal {
   time: number;
   price: number;
@@ -16,6 +18,7 @@ export interface StrategyResult {
   diagnostics: StrategyDiagnostics;
   trend: 'BULL' | 'BEAR' | 'NEUTRAL';
   trendDetails: TrendDetails;
+  validations: DecisionValidation[];
 }
 
 export interface TrendDetails {
@@ -38,6 +41,18 @@ export interface StrategyDiagnostics {
   lastEvaluatedCandle: number | null;
 }
 
+export interface DecisionValidation {
+  signalTime: number;
+  signalType: SignalType;
+  entryPrice: number;
+  evaluationTime: number | null;
+  exitPrice: number | null;
+  horizonCandles: number;
+  actualHorizon: number | null;
+  directionChangePct: number | null;
+  outcome: 'WIN' | 'LOSS' | 'PENDING';
+}
+
 export interface NearMiss {
   time: number;
   price: number;
@@ -45,6 +60,13 @@ export interface NearMiss {
   satisfied: string[];
   missing: string[];
 }
+
+interface ConditionEvaluation {
+  satisfied: string[];
+  missing: string[];
+}
+
+const NEAR_MISS_LIMIT = 100;
 
 export function generateSignals(candles: Candle[]): StrategyResult {
   if (!candles.length) {
@@ -54,6 +76,7 @@ export function generateSignals(candles: Candle[]): StrategyResult {
       diagnostics: { nearMisses: [], lastEvaluatedCandle: null },
       trend: 'NEUTRAL',
       trendDetails: { score: 0, confidence: 0, direction: 'NEUTRAL', factors: [] },
+      validations: [],
     };
   }
 
@@ -68,53 +91,75 @@ export function generateSignals(candles: Candle[]): StrategyResult {
   const signals: Signal[] = [];
   const fastSignals: Signal[] = [];
   const nearMisses: NearMiss[] = [];
+  const recordNearMiss = (entry: NearMiss) => {
+    nearMisses.push(entry);
+    if (nearMisses.length > NEAR_MISS_LIMIT) {
+      nearMisses.shift();
+    }
+  };
 
   for (let index = 200; index < candles.length; index++) {
     const price = closes[index];
-    const ema50Value = ema50[index] ?? 0;
-    const ema200Value = ema200[index] ?? 0;
+    const ema50Value = ema50[index];
+    const ema200Value = ema200[index];
     const ema9Value = ema9[index];
     const ema21Value = ema21[index];
+
+    if (!isFiniteNumber(price) || !isFiniteNumber(ema50Value) || !isFiniteNumber(ema200Value)) {
+      continue;
+    }
 
     const bullishTrend = ema50Value > ema200Value;
     const bearishTrend = ema50Value < ema200Value;
 
+    const macdLinePrev = macdLine[index - 1];
+    const macdLineNow = macdLine[index];
+    const signalLinePrev = signalLine[index - 1];
+    const signalLineNow = signalLine[index];
+    const hasMacdPrev = isFiniteNumber(macdLinePrev) && isFiniteNumber(signalLinePrev);
+    const hasMacdNow = isFiniteNumber(macdLineNow) && isFiniteNumber(signalLineNow);
     const macdBullishCross =
-      (macdLine[index - 1] ?? 0) <= (signalLine[index - 1] ?? 0) && (macdLine[index] ?? 0) > (signalLine[index] ?? 0);
+      hasMacdPrev &&
+      hasMacdNow &&
+      (macdLinePrev as number) <= (signalLinePrev as number) &&
+      (macdLineNow as number) > (signalLineNow as number);
     const macdBearishCross =
-      (macdLine[index - 1] ?? 0) >= (signalLine[index - 1] ?? 0) && (macdLine[index] ?? 0) < (signalLine[index] ?? 0);
+      hasMacdPrev &&
+      hasMacdNow &&
+      (macdLinePrev as number) >= (signalLinePrev as number) &&
+      (macdLineNow as number) < (signalLineNow as number);
 
-    const histogramNow = histogram[index] ?? 0;
-    const histogramPrev = histogram[index - 1] ?? histogramNow;
-    const macdMomentumUp = histogramNow >= 0 && (histogramNow >= histogramPrev || macdBullishCross);
-    const macdMomentumDown = histogramNow <= 0 && (histogramNow <= histogramPrev || macdBearishCross);
+    const histogramNowRaw = histogram[index];
+    const histogramPrevRaw = histogram[index - 1];
+    const hasHistogramNow = isFiniteNumber(histogramNowRaw);
+    const histogramNow = hasHistogramNow ? (histogramNowRaw as number) : 0;
+    const histogramPrev = isFiniteNumber(histogramPrevRaw) ? (histogramPrevRaw as number) : histogramNow;
+    const macdMomentumUp =
+      hasHistogramNow && histogramNow >= 0 && (histogramNow >= histogramPrev || macdBullishCross);
+    const macdMomentumDown =
+      hasHistogramNow && histogramNow <= 0 && (histogramNow <= histogramPrev || macdBearishCross);
 
-    const rsiValue = rsi14[index] ?? 50;
-    const rsiSupportsLong = rsiValue <= 65;
-    const rsiSupportsShort = rsiValue >= 35;
+    const rsiValue = rsi14[index];
+    const hasRsi = isFiniteNumber(rsiValue);
+    const rsiSupportsLong = hasRsi && (rsiValue as number) <= 45;
+    const rsiSupportsShort = hasRsi && (rsiValue as number) >= 55;
 
     const priceAboveEma50 = price >= ema50Value * 0.995;
     const priceBelowEma50 = price <= ema50Value * 1.005;
 
-    const longConditions = [
+    const longConditions: ConditionCheck[] = [
       { label: 'EMA50 above EMA200', ok: bullishTrend },
       { label: 'MACD bullish momentum', ok: macdBullishCross || macdMomentumUp },
-      { label: 'RSI <= 65', ok: rsiSupportsLong },
+      { label: 'RSI <= 45', ok: rsiSupportsLong },
       { label: 'Price above EMA50 (±0.5%)', ok: priceAboveEma50 },
     ];
 
-    const shortConditions = [
+    const shortConditions: ConditionCheck[] = [
       { label: 'EMA50 below EMA200', ok: bearishTrend },
       { label: 'MACD bearish momentum', ok: macdBearishCross || macdMomentumDown },
-      { label: 'RSI >= 35', ok: rsiSupportsShort },
+      { label: 'RSI >= 55', ok: rsiSupportsShort },
       { label: 'Price below EMA50 (±0.5%)', ok: priceBelowEma50 },
     ];
-
-    const evaluateConditions = (conditions: { label: string; ok: boolean }[]) => {
-      const satisfied = conditions.filter((condition) => condition.ok).map((condition) => condition.label);
-      const missing = conditions.filter((condition) => !condition.ok).map((condition) => condition.label);
-      return { satisfied, missing };
-    };
 
     const longEval = evaluateConditions(longConditions);
     if (longEval.missing.length === 0) {
@@ -125,7 +170,7 @@ export function generateSignals(candles: Candle[]): StrategyResult {
         reason: 'EMA trend + MACD momentum + RSI support + price > EMA50',
       });
     } else if (longEval.missing.length === 1) {
-      nearMisses.push({
+      recordNearMiss({
         time: candles[index].closeTime,
         price,
         bias: 'LONG',
@@ -143,7 +188,7 @@ export function generateSignals(candles: Candle[]): StrategyResult {
         reason: 'EMA trend + MACD momentum + RSI resistance + price < EMA50',
       });
     } else if (shortEval.missing.length === 1) {
-      nearMisses.push({
+      recordNearMiss({
         time: candles[index].closeTime,
         price,
         bias: 'SHORT',
@@ -187,6 +232,7 @@ export function generateSignals(candles: Candle[]): StrategyResult {
 
   const trend = trendDetails.direction;
   const trimmedNearMisses = nearMisses.slice(-100);
+  const validations = evaluateHistoricalDecisions(candles, signals);
 
   return {
     signals,
@@ -197,6 +243,7 @@ export function generateSignals(candles: Candle[]): StrategyResult {
     },
     trend,
     trendDetails,
+    validations,
   };
 }
 
@@ -311,4 +358,91 @@ function buildTrendDetails({ candles, ema50, ema200, macdHistogram, rsi14 }: Tre
 
 function isFiniteNumber(value: number | null | undefined): value is number {
   return typeof value === 'number' && Number.isFinite(value);
+}
+
+function evaluateConditions(conditions: ConditionCheck[]): ConditionEvaluation {
+  const satisfied: string[] = [];
+  const missing: string[] = [];
+  for (const condition of conditions) {
+    if (condition.ok) {
+      satisfied.push(condition.label);
+    } else {
+      missing.push(condition.label);
+    }
+  }
+  return { satisfied, missing };
+}
+
+function evaluateHistoricalDecisions(candles: Candle[], signals: Signal[], horizon = 5): DecisionValidation[] {
+  if (!signals.length || !candles.length) {
+    return [];
+  }
+
+  const lookup = new Map<number, number>();
+  candles.forEach((candle, index) => {
+    if (isFiniteNumber(candle.closeTime)) {
+      lookup.set(candle.closeTime, index);
+    }
+  });
+
+  return signals.map((signal) => {
+    const startIndex = lookup.get(signal.time);
+    if (startIndex === undefined) {
+      return {
+        signalTime: signal.time,
+        signalType: signal.type,
+        entryPrice: signal.price,
+        evaluationTime: null,
+        exitPrice: null,
+        horizonCandles: horizon,
+        actualHorizon: null,
+        directionChangePct: null,
+        outcome: 'PENDING',
+      };
+    }
+
+    const targetIndex = Math.min(candles.length - 1, startIndex + horizon);
+    if (targetIndex <= startIndex) {
+      return {
+        signalTime: signal.time,
+        signalType: signal.type,
+        entryPrice: signal.price,
+        evaluationTime: null,
+        exitPrice: null,
+        horizonCandles: horizon,
+        actualHorizon: null,
+        directionChangePct: null,
+        outcome: 'PENDING',
+      };
+    }
+
+    const evaluationCandle = candles[targetIndex];
+    const exitPrice = evaluationCandle.close;
+    const directionMultiplier = signal.type === 'LONG' ? 1 : signal.type === 'SHORT' ? -1 : 0;
+
+    let outcome: DecisionValidation['outcome'] = 'PENDING';
+    let directionChangePct: number | null = null;
+
+    if (directionMultiplier !== 0 && isFiniteNumber(exitPrice) && isFiniteNumber(signal.price)) {
+      const rawChange = ((exitPrice - signal.price) / signal.price) * 100;
+      directionChangePct = rawChange * directionMultiplier;
+      if (directionChangePct > 0) {
+        outcome = 'WIN';
+      } else if (directionChangePct < 0) {
+        outcome = 'LOSS';
+      }
+    }
+
+    return {
+      signalTime: signal.time,
+      signalType: signal.type,
+      entryPrice: signal.price,
+      evaluationTime: evaluationCandle.closeTime,
+      exitPrice,
+      horizonCandles: horizon,
+      actualHorizon: targetIndex - startIndex,
+      directionChangePct,
+      outcome,
+    };
+  });
 }

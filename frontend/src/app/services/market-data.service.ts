@@ -19,7 +19,7 @@ export class MarketDataService {
 
   getKlines(
     symbol: string,
-    interval: Interval = '1h',
+    interval: Interval = '1m',
     limit = 500,
     provider: DataProvider = 'binance',
   ): Observable<Candle[]> {
