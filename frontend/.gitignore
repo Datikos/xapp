@@ -1,0 +1,13 @@
+# Angular build / node
+/node_modules
+/dist
+/.angular
+/.sass-cache
+/.cache
+/.vscode
+# local env files
+/src/environments/environment*.local.ts
+npm-debug.log
+yarn-error.log
+package-lock.json
+yarn.lock

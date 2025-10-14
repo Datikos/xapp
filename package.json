@@ -1,0 +1,13 @@
+{
+  "name": "xapp-root",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "start:frontend": "cd frontend && npm start",
+    "build:frontend": "cd frontend && npm run build",
+    "install:frontend": "cd frontend && npm ci"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
