@@ -1,4 +1,4 @@
-export type DataProvider = 'binance' | 'coinbase';
+export type DataProvider = 'binance' | 'coinbase' | 'nasdaq';
 
 export interface ProviderOption {
   id: DataProvider;

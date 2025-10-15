@@ -58,6 +58,14 @@ import { AdvisorCardComponent } from './components/advisor-card/advisor-card.com
 import { SignalsGridComponent } from './components/signals-grid/signals-grid.component';
 import { PlaybookCardComponent } from './components/playbook-card/playbook-card.component';
 
+type MarketSegment = 'crypto' | 'equities';
+
+interface SegmentConfig {
+  id: MarketSegment;
+  label: string;
+  providerIds: DataProvider[];
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -81,9 +89,19 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
   template: `
     <main class="app">
       <header class="hero">
-        <h1>{{ assetPairLabel() }} Directional Playbook</h1>
+        <h1>{{ currentSegmentLabel() }} · {{ assetPairLabel() }}</h1>
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
+      <nav class="segment-nav">
+        <button
+          type="button"
+          *ngFor="let option of marketSegments"
+          (click)="onSegmentChange(option.id)"
+          [class.segment-nav__button--active]="option.id === segmentValue"
+        >
+          {{ option.label }}
+        </button>
+      </nav>
 
       <section class="card control-hub">
         <header class="control-hub-header">
@@ -104,13 +122,15 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
             <label class="control-field">
               <span class="control-field-label">Provider</span>
               <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
-                <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
+                <option *ngFor="let provider of visibleProviders()" [value]="provider.id">
+                  {{ provider.label }}
+                </option>
               </select>
             </label>
             <label class="control-field">
               <span class="control-field-label">Asset</span>
               <select [ngModel]="assetValue" (ngModelChange)="onAssetChange($event)">
-                <option *ngFor="let asset of assets" [value]="asset.id">
+                <option *ngFor="let asset of visibleAssets()" [value]="asset.id">
                   {{ asset.base }}/{{ asset.quote }} · {{ asset.name }}
                 </option>
               </select>
@@ -175,40 +195,7 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
             <p>Fetching latest candles…</p>
           </article>
 
-          <article class="status-card accent" *ngIf="!loading() && store.latestSignal() as signal">
-            <h3>Latest Signal</h3>
-            <p>
-              <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
-              @ {{ signal.price | number: '1.0-0' }}
-            </p>
-            <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-          </article>
-
-          <article class="status-card highlight" *ngIf="!loading() && store.latestSignal() as decision">
-            <h3>Last Decision</h3>
-            <p>
-              <span class="pill" [class.long-pill]="decision.type === 'LONG'" [class.short-pill]="decision.type === 'SHORT'">{{ decision.type }}</span>
-              decided {{ decision.time | date: 'yyyy-MM-dd HH:mm' }}
-            </p>
-            <p class="signal-reason">{{ decision.reason }}</p>
-            <ng-container *ngIf="store.latestValidation() as validation">
-              <p>
-                Outcome
-                <span class="outcome-pill" [class.outcome-win]="validation.outcome === 'WIN'" [class.outcome-loss]="validation.outcome === 'LOSS'" [class.outcome-pending]="validation.outcome === 'PENDING'">
-                  {{ validation.outcome }}
-                </span>
-                <span *ngIf="validation.directionChangePct !== null">
-                  — {{ formatChange(validation.directionChangePct) }} after {{ validation.actualHorizon ?? validation.horizonCandles }} bars
-                </span>
-              </p>
-              <p *ngIf="validation.evaluationTime">
-                Checked at {{ validation.evaluationTime | date: 'yyyy-MM-dd HH:mm' }}
-              </p>
-            </ng-container>
-            <p *ngIf="!store.latestValidation()">Outcome validation pending.</p>
-          </article>
-
-          <article class="status-card" *ngIf="!loading() && store.latestFastSignal() as fast">
+          <article class="status-card" *ngIf="!loading() && !error() && recentFastSignal() as fast">
             <h3>Momentum Ping</h3>
             <p>
               <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
@@ -224,9 +211,12 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
             <span class="meta">Source: {{ providerLabel() }}</span>
           </article>
 
-          <article class="status-card warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
+          <article
+            class="status-card warning"
+            *ngIf="!loading() && !error() && primarySignalStale() && store.latestSignal() as primary"
+          >
             <h3>Awaiting Confirmation</h3>
-            <p>No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}</p>
+            <p>No new primary signals since {{ primary.time | date: 'yyyy-MM-dd HH:mm' }}</p>
           </article>
 
           <article class="status-card" *ngIf="!loading() && !error() && latestNearMiss() as near">
@@ -337,6 +327,38 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
         flex-direction: column;
         gap: 16px;
       }
+
+      .segment-nav {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 8px;
+      }
+
+      .segment-nav button {
+        background: rgba(148, 163, 184, 0.18);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 999px;
+        color: #e2e8f0;
+        padding: 6px 18px;
+        font-size: 0.85rem;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        transition: background 150ms ease, border-color 150ms ease, transform 150ms ease;
+      }
+
+      .segment-nav button:hover {
+        background: rgba(148, 163, 184, 0.32);
+        border-color: rgba(148, 163, 184, 0.4);
+      }
+
+      .segment-nav__button--active {
+        background: linear-gradient(135deg, #2563eb, #38bdf8);
+        border-color: transparent;
+        color: #f8fafc;
+        box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35);
+        transform: translateY(-1px);
+      }
     `,
   ],
 })
@@ -349,6 +371,11 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly intervals: Interval[] = environment.intervals;
   readonly providers: ProviderOption[] = environment.providers;
   readonly assets: AssetOption[] = environment.assets;
+  private readonly segmentConfigs: SegmentConfig[] = [
+    { id: 'crypto', label: 'Crypto Markets', providerIds: ['binance', 'coinbase'] },
+    { id: 'equities', label: 'Equities (Nasdaq)', providerIds: ['nasdaq'] },
+  ];
+  readonly marketSegments = this.segmentConfigs;
   private readonly defaultProviderLabel = this.providers[0]?.label ?? 'Primary feed';
   readonly formatChange = formatChange;
   readonly formatProfitFactor = formatProfitFactor;
@@ -365,22 +392,52 @@ export class AppComponent implements OnInit, OnDestroy {
   private readonly defaultAssetId =
     environment.defaultAssetId ?? (this.assets[0]?.id ?? 'btc');
   private readonly intervalSignal = signal<Interval>(environment.defaultInterval);
+  private readonly segmentSignal = signal<MarketSegment>(this.resolveInitialSegment());
   private readonly providerSignal = signal<DataProvider>(
     (this.providers[0]?.id ?? 'binance') as DataProvider,
   );
   private readonly assetSignal = signal<string>(this.defaultAssetId);
+  private readonly segmentProviderIds = computed(() => {
+    const current = this.segmentSignal();
+    return this.segmentConfigs.find((item) => item.id === current)?.providerIds ??
+      this.segmentConfigs[0]?.providerIds ??
+      [];
+  });
+  readonly visibleProviders = computed(() =>
+    this.providers.filter((provider) => this.segmentProviderIds().includes(provider.id)),
+  );
+  readonly visibleAssets = computed(() =>
+    this.assets.filter((asset) =>
+      this.segmentProviderIds().some((providerId) => this.assetSupportsProvider(asset, providerId)),
+    ),
+  );
+  readonly currentSegmentLabel = computed(() => {
+    const segment = this.segmentSignal();
+    return this.segmentConfigs.find((item) => item.id === segment)?.label ?? this.segmentConfigs[0]?.label ?? 'Dashboard';
+  });
   readonly auto = signal(false);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
-  readonly staleSignal = computed(() => {
+  readonly recentPrimarySignal = computed(() => {
     const latest = this.store.latestSignal();
-    const lastCandle = this.store.lastCandle();
-    const interval = this.intervalSignal();
-    if (!latest || !lastCandle) {
+    if (!latest) {
+      return null;
+    }
+    return this.isSignalFresh(latest.time) ? latest : null;
+  });
+  readonly recentFastSignal = computed(() => {
+    const fast = this.store.latestFastSignal();
+    if (!fast) {
+      return null;
+    }
+    return this.isSignalFresh(fast.time) ? fast : null;
+  });
+  readonly primarySignalStale = computed(() => {
+    const latest = this.store.latestSignal();
+    if (!latest) {
       return false;
     }
-    const diff = lastCandle.closeTime - latest.time;
-    return diff >= this.intervalToMs(interval);
+    return !this.isSignalFresh(latest.time);
   });
   readonly providerLabel = computed(() => {
     const option = this.providers.find((item) => item.id === this.providerSignal());
@@ -1516,6 +1573,48 @@ export class AppComponent implements OnInit, OnDestroy {
     this.assetSignal.set(value);
   }
 
+  get segmentValue(): MarketSegment {
+    return this.segmentSignal();
+  }
+
+  onSegmentChange(segment: MarketSegment): void {
+    if (segment === this.segmentSignal()) {
+      return;
+    }
+    this.segmentSignal.set(segment);
+
+    const allowedProviders = this.segmentProviderIds();
+    const currentProvider = this.providerSignal();
+    if (!allowedProviders.includes(currentProvider)) {
+      const fallbackProvider =
+        allowedProviders[0] ?? (this.providers[0]?.id as DataProvider | undefined);
+      if (fallbackProvider) {
+        this.providerValue = fallbackProvider;
+      }
+    }
+
+    const currentAsset = this.activeAsset();
+    const assets = this.visibleAssets();
+    if (!currentAsset || !this.assetSupportsProvider(currentAsset, this.providerSignal())) {
+      const fallbackAsset = assets.find((asset) =>
+        this.assetSupportsProvider(asset, this.providerSignal()),
+      );
+      if (fallbackAsset) {
+        this.assetValue = fallbackAsset.id;
+      } else if (assets[0]) {
+        this.assetValue = assets[0].id;
+        const providerFallback = this.findFirstProviderForAsset(assets[0]);
+        if (providerFallback) {
+          this.providerValue = providerFallback;
+        }
+      }
+    }
+
+    this.store.setNewsEvents([]);
+    this.reload();
+    this.fetchNewsForAsset();
+  }
+
 
   onIntervalChange(value: Interval): void {
     if (value === this.intervalSignal()) {
@@ -1529,8 +1628,24 @@ export class AppComponent implements OnInit, OnDestroy {
     if (value === this.providerSignal()) {
       return;
     }
+    const previousAssetId = this.assetSignal();
     this.providerValue = value;
+
+    let assetAdjusted = false;
+    if (!this.assetSupportsProvider(this.activeAsset(), value)) {
+      const fallback = this.findFirstAssetForProvider(value);
+      if (fallback) {
+        this.assetValue = fallback.id;
+        assetAdjusted = fallback.id !== previousAssetId;
+      }
+    }
+
     this.reload();
+
+    if (assetAdjusted) {
+      this.store.setNewsEvents([]);
+      this.fetchNewsForAsset();
+    }
   }
 
   onAssetChange(value: string): void {
@@ -1541,7 +1656,14 @@ export class AppComponent implements OnInit, OnDestroy {
     if (!asset) {
       return;
     }
+    const previousProvider = this.providerSignal();
     this.assetValue = asset.id;
+    if (!this.assetSupportsProvider(asset, previousProvider)) {
+      const fallbackProvider = this.findFirstProviderForAsset(asset);
+      if (fallbackProvider && fallbackProvider !== previousProvider) {
+        this.providerValue = fallbackProvider;
+      }
+    }
     this.store.setNewsEvents([]);
     this.reload();
     this.fetchNewsForAsset();
@@ -1568,7 +1690,7 @@ export class AppComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       },
       error: (err) => {
-        console.error('Failed to load Binance klines', err);
+        console.error('Failed to load market data', err);
         this.error.set('Failed to fetch market data. Please retry in a moment.');
         this.loading.set(false);
       },
@@ -1604,6 +1726,19 @@ export class AppComponent implements OnInit, OnDestroy {
     this.auto.set(false);
   }
 
+  private resolveInitialSegment(): MarketSegment {
+    const primaryProvider = this.providers[0]?.id;
+    if (primaryProvider) {
+      const matching = this.segmentConfigs.find((segment) =>
+        segment.providerIds.includes(primaryProvider),
+      );
+      if (matching) {
+        return matching.id;
+      }
+    }
+    return this.segmentConfigs[0]?.id ?? 'crypto';
+  }
+
   private intervalToMs(interval: Interval): number {
     switch (interval) {
       case '1m':
@@ -1623,6 +1758,20 @@ export class AppComponent implements OnInit, OnDestroy {
     }
   }
 
+  private signalFreshThresholdMs(interval: Interval): number {
+    const base = this.intervalToMs(interval);
+    return Math.max(base, 60_000) * 3;
+  }
+
+  private isSignalFresh(signalTime: number | null | undefined): boolean {
+    if (!Number.isFinite(signalTime)) {
+      return false;
+    }
+    const reference = this.store.lastCandle()?.closeTime ?? Date.now();
+    const threshold = this.signalFreshThresholdMs(this.intervalSignal());
+    return reference - (signalTime as number) <= threshold;
+  }
+
   private activeSymbol(): string {
     const provider = this.providerSignal();
     const asset = this.activeAsset();
@@ -1631,6 +1780,13 @@ export class AppComponent implements OnInit, OnDestroy {
       if (assetSymbol) {
         return assetSymbol;
       }
+      const fallbackProvider = this.findFirstProviderForAsset(asset);
+      if (fallbackProvider) {
+        const fallbackSymbol = asset.providerSymbols[fallbackProvider];
+        if (fallbackSymbol) {
+          return fallbackSymbol;
+        }
+      }
     }
 
     const providerOption = this.providers.find((item) => item.id === provider);
@@ -1638,17 +1794,51 @@ export class AppComponent implements OnInit, OnDestroy {
       return providerOption.symbol;
     }
 
-    if (asset) {
-      const firstProviderId = this.providers[0]?.id as DataProvider | undefined;
-      if (firstProviderId) {
-        const fallbackSymbol = asset.providerSymbols[firstProviderId];
-        if (fallbackSymbol) {
-          return fallbackSymbol;
-        }
+    return this.providers[0]?.symbol ?? 'BTCUSDT';
+  }
+
+  private assetSupportsProvider(asset: AssetOption | null, provider: DataProvider): boolean {
+    if (!asset) {
+      return false;
+    }
+    const symbol = asset.providerSymbols[provider];
+    return Boolean(symbol);
+  }
+
+  private findFirstProviderForAsset(asset: AssetOption | null): DataProvider | null {
+    if (!asset) {
+      return null;
+    }
+    const preferredProviders = this.visibleProviders();
+    for (const option of preferredProviders) {
+      const candidate = asset.providerSymbols[option.id];
+      if (candidate) {
+        return option.id;
       }
     }
+    for (const option of this.providers) {
+      const candidate = asset.providerSymbols[option.id];
+      if (candidate) {
+        return option.id;
+      }
+    }
+    const providerKeys = Object.keys(asset.providerSymbols) as DataProvider[];
+    for (const key of providerKeys) {
+      const candidate = asset.providerSymbols[key];
+      if (candidate) {
+        return key;
+      }
+    }
+    return null;
+  }
 
-    return this.providers[0]?.symbol ?? 'BTCUSDT';
+  private findFirstAssetForProvider(provider: DataProvider): AssetOption | null {
+    const preferredAssets = this.visibleAssets();
+    const firstVisible = preferredAssets.find((asset) => this.assetSupportsProvider(asset, provider));
+    if (firstVisible) {
+      return firstVisible;
+    }
+    return this.assets.find((asset) => this.assetSupportsProvider(asset, provider)) ?? null;
   }
 
 }

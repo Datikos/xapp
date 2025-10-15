@@ -13,6 +13,7 @@ export interface DashboardConfig {
 export interface MarketDataConfig {
   binanceUrl: string;
   coinbaseUrl: string;
+  nasdaqUrl: string;
 }
 
 export interface NewsApiEnvironmentConfig {
@@ -88,6 +89,12 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
   );
   const binanceEthSymbol = trimOrFallback(metaEnv.NG_APP_BINANCE_SYMBOL_ETH, 'ETHUSDT');
   const coinbaseEthSymbol = trimOrFallback(metaEnv.NG_APP_COINBASE_SYMBOL_ETH, 'ETH-USD');
+  const nasdaqDefaultSymbol = trimOrFallback(
+    metaEnv.NG_APP_NASDAQ_DEFAULT_SYMBOL ?? metaEnv.NG_APP_NASDAQ_SYMBOL_AAPL,
+    'AAPL',
+  );
+  const nasdaqAaplSymbol = trimOrFallback(metaEnv.NG_APP_NASDAQ_SYMBOL_AAPL, 'AAPL');
+  const nasdaqNvdaSymbol = trimOrFallback(metaEnv.NG_APP_NASDAQ_SYMBOL_NVDA, 'NVDA');
 
   const providers: ProviderOption[] = [
     {
@@ -99,6 +106,11 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
       id: 'coinbase',
       label: trimOrFallback(metaEnv.NG_APP_COINBASE_LABEL, 'Coinbase Advanced'),
       symbol: coinbaseBtcSymbol,
+    },
+    {
+      id: 'nasdaq',
+      label: trimOrFallback(metaEnv.NG_APP_NASDAQ_LABEL, 'Nasdaq (Equities)'),
+      symbol: nasdaqDefaultSymbol,
     },
   ];
 
@@ -135,6 +147,36 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
         'ether',
       ]),
     },
+    {
+      id: trimOrFallback(metaEnv.NG_APP_ASSET_AAPL_ID, 'aapl'),
+      name: trimOrFallback(metaEnv.NG_APP_ASSET_AAPL_NAME, 'Apple Inc.'),
+      base: trimOrFallback(metaEnv.NG_APP_ASSET_AAPL_BASE, 'AAPL'),
+      quote: trimOrFallback(metaEnv.NG_APP_ASSET_AAPL_QUOTE, 'USD'),
+      providerSymbols: {
+        nasdaq: nasdaqAaplSymbol,
+      },
+      newsCodes: parseList(metaEnv.NG_APP_ASSET_AAPL_NEWS_CODES, ['AAPL']),
+      newsKeywords: parseList(metaEnv.NG_APP_ASSET_AAPL_NEWS_KEYWORDS, [
+        'apple',
+        'iphone',
+        'macbook',
+      ]),
+    },
+    {
+      id: trimOrFallback(metaEnv.NG_APP_ASSET_NVDA_ID, 'nvda'),
+      name: trimOrFallback(metaEnv.NG_APP_ASSET_NVDA_NAME, 'NVIDIA Corporation'),
+      base: trimOrFallback(metaEnv.NG_APP_ASSET_NVDA_BASE, 'NVDA'),
+      quote: trimOrFallback(metaEnv.NG_APP_ASSET_NVDA_QUOTE, 'USD'),
+      providerSymbols: {
+        nasdaq: nasdaqNvdaSymbol,
+      },
+      newsCodes: parseList(metaEnv.NG_APP_ASSET_NVDA_NEWS_CODES, ['NVDA']),
+      newsKeywords: parseList(metaEnv.NG_APP_ASSET_NVDA_NEWS_KEYWORDS, [
+        'nvidia',
+        'gpu',
+        'ai',
+      ]),
+    },
   ];
 
   const defaultAssetCandidate = trimOrFallback(
@@ -169,6 +211,7 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
         metaEnv.NG_APP_COINBASE_URL,
         'https://api.exchange.coinbase.com/products',
       ),
+      nasdaqUrl: trimOrFallback(metaEnv.NG_APP_NASDAQ_URL, '/api/nasdaq/candles'),
     },
     newsApi: {
       enabled: Boolean(newsApiToken),

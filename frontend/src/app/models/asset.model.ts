@@ -5,8 +5,7 @@ export interface AssetOption {
   name: string;
   base: string;
   quote: string;
-  providerSymbols: Record<DataProvider, string>;
+  providerSymbols: Partial<Record<DataProvider, string>>;
   newsCodes: string[];
   newsKeywords: string[];
 }
-
