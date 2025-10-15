@@ -1,4 +1,5 @@
-import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect, inject, signal } from '@angular/core';
+import { take } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -7,6 +8,8 @@ import { Interval } from './models/candle.model';
 import { DataProvider, MarketDataService } from './services/market-data.service';
 import { TrendFactor } from './lib/strategy';
 import { IncomeAdvice, generateIncomeAdvice } from './lib/advisor';
+import { NewsDataService } from './services/news-data.service';
+import { PredictionHistoryService } from './services/prediction-history.service';
 
 interface ProviderOption {
   id: DataProvider;
@@ -74,6 +77,121 @@ interface ProviderOption {
           <ng-template #activityEmpty>
             <p class="activity-empty">Signals will appear here once enough confluence is captured.</p>
           </ng-template>
+        </div>
+      </section>
+
+      <section class="card news-card" *ngIf="store.newsPrediction() as news">
+        <header class="card-heading card-heading--split">
+          <div>
+            <h2>News Impact Lens</h2>
+            <span class="card-subtitle">Weighted sentiment forecast from recent catalysts.</span>
+          </div>
+          <div class="news-summary-badge" [class.long]="news.bias === 'BULL'" [class.short]="news.bias === 'BEAR'">
+            {{ news.bias === 'BULL' ? 'Bullish skew' : news.bias === 'BEAR' ? 'Bearish skew' : 'Neutral mix' }}
+          </div>
+        </header>
+        <div class="card-body news-body">
+          <div class="news-summary">
+            <div class="news-metric">
+              <span class="news-metric-label">Expected Move</span>
+              <span class="news-metric-value">{{ news.expectedMovePct | number: '1.1-1' }}%</span>
+            </div>
+            <div class="news-metric">
+              <span class="news-metric-label">Confidence</span>
+              <span class="news-metric-value">{{ news.confidence }}%</span>
+            </div>
+            <div class="news-metric">
+              <span class="news-metric-label">Horizon</span>
+              <span class="news-metric-value">~{{ news.horizonHours }}h</span>
+            </div>
+          </div>
+          <p class="news-narrative">{{ news.narrative }}</p>
+          <div class="news-drivers" *ngIf="news.drivers.length; else newsDriversEmpty">
+            <article class="news-driver" *ngFor="let driver of news.drivers">
+              <header>
+                <span class="news-driver-headline">{{ driver.headline }}</span>
+                <span class="news-driver-meta">{{ driver.source }} · {{ driver.time | date: 'HH:mm' }}</span>
+              </header>
+              <p class="news-driver-detail">
+                Sentiment {{ driver.sentiment }} · Score {{ driver.score | number: '1.1-2' }} · Weight {{ driver.weight | number: '1.1-2' }}
+              </p>
+            </article>
+          </div>
+          <ng-template #newsDriversEmpty>
+            <p class="news-empty">News items captured but none met confidence thresholds.</p>
+          </ng-template>
+        </div>
+      </section>
+
+      <section class="card chart-card news-history-card" *ngIf="newsPredictionSeries() as series">
+        <header class="card-heading card-heading--split">
+          <div>
+            <h2>30-Day News Prediction Scorecard</h2>
+            <span class="card-subtitle">Expected move vs realised change from news model.</span>
+          </div>
+          <div class="chart-legend">
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--line news-predicted"></span>
+              Predicted move
+            </span>
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--line news-actual"></span>
+              Realised move
+            </span>
+          </div>
+        </header>
+        <div class="card-body news-history-body">
+          <div class="news-history-chart">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <rect class="chart-panel" x="0" y="0" width="100" height="100"></rect>
+              <g class="chart-grid">
+                <ng-container *ngFor="let tick of series.yTicks">
+                  <line class="chart-grid-line" x1="0" [attr.y1]="tick.y" x2="100" [attr.y2]="tick.y"></line>
+                  <text class="chart-tick-label" x="2" [attr.y]="tick.y - 1">{{ formatChange(tick.value) }}</text>
+                </ng-container>
+              </g>
+              <path class="news-predicted-line" [attr.d]="series.predictedPath"></path>
+              <path *ngIf="series.actualPath" class="news-actual-line" [attr.d]="series.actualPath"></path>
+              <line class="news-zero-line" x1="0" [attr.y1]="series.zeroLine" x2="100" [attr.y2]="series.zeroLine"></line>
+              <g class="news-points">
+                <ng-container *ngFor="let point of series.points">
+                  <circle class="predicted-point" [attr.cx]="point.x" [attr.cy]="point.predictedY" r="1.6"></circle>
+                  <circle
+                    *ngIf="point.actualY !== null"
+                    class="actual-point"
+                    [class.actual-hit]="point.outcome === 'HIT'"
+                    [class.actual-miss]="point.outcome === 'MISS'"
+                    [attr.cx]="point.x"
+                    [attr.cy]="point.actualY"
+                    r="1.9"
+                  ></circle>
+                </ng-container>
+              </g>
+              <g class="chart-x-labels">
+                <ng-container *ngFor="let label of series.xLabels">
+                  <text class="chart-x-label" [attr.x]="label.x" [attr.y]="series.zeroLine + 12">{{ label.time | date: 'MM-dd' }}</text>
+                </ng-container>
+              </g>
+            </svg>
+          </div>
+          <div class="news-history-metrics">
+            <div>
+              <span class="news-metric-label">Resolved</span>
+              <span class="news-metric-value">{{ series.resolvedCount }}</span>
+            </div>
+            <div>
+              <span class="news-metric-label">Pending</span>
+              <span class="news-metric-value">{{ series.pending }}</span>
+            </div>
+            <div>
+              <span class="news-metric-label">Hit Rate</span>
+              <span class="news-metric-value">{{ series.hitRate !== null ? series.hitRate + '%' : 'n/a' }}</span>
+            </div>
+            <div>
+              <span class="news-metric-label">Avg Error</span>
+              <span class="news-metric-value">{{ series.averageError !== null ? series.averageError + '%' : 'n/a' }}</span>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -746,6 +864,8 @@ interface ProviderOption {
 })
 export class AppComponent implements OnInit, OnDestroy {
   private readonly api = inject(MarketDataService);
+  private readonly newsService = inject(NewsDataService);
+  private readonly predictionHistory = inject(PredictionHistoryService);
   readonly store = inject(SignalsStore);
 
   readonly intervals: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
@@ -1047,6 +1167,130 @@ export class AppComponent implements OnInit, OnDestroy {
     };
   });
 
+  readonly newsPredictionSeries = computed(() => {
+    const candles = this.store.candles();
+    const resolved = this.predictionHistory.resolveRecords(candles);
+    if (!resolved.length) {
+      return null;
+    }
+
+    const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const records = resolved
+      .filter((item) => item.createdAt >= cutoff)
+      .sort((a, b) => a.candleTime - b.candleTime);
+
+    if (!records.length) {
+      return null;
+    }
+
+    const predictedValues = records.map((item) => item.expectedMovePct);
+    const actualValues = records
+      .filter((item) => item.actualMovePct !== null)
+      .map((item) => item.actualMovePct as number);
+    const domainValues = [...predictedValues, ...(actualValues.length ? actualValues : [0]), 0];
+    let minValue = Math.min(...domainValues);
+    let maxValue = Math.max(...domainValues);
+    if (Math.abs(maxValue - minValue) < 1e-3) {
+      minValue -= 1;
+      maxValue += 1;
+    }
+
+    const marginTop = 10;
+    const chartHeight = 70;
+    const yAt = (value: number) => {
+      const ratio = (value - minValue) / (maxValue - minValue);
+      return marginTop + (1 - ratio) * chartHeight;
+    };
+
+    const count = records.length;
+    const domain = Math.max(1, count - 1);
+    const xAt = (index: number) => (count === 1 ? 50 : (index / domain) * 100);
+
+    const points = records.map((record, index) => {
+      const x = xAt(index);
+      const predictedY = yAt(record.expectedMovePct);
+      const actual = record.actualMovePct;
+      const actualY = actual !== null ? yAt(actual) : null;
+      return {
+        index,
+        x,
+        predicted: record.expectedMovePct,
+        predictedY,
+        actual,
+        actualY,
+        time: record.candleTime,
+        outcome: record.outcome,
+      };
+    });
+
+    const predictedPath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(3)},${point.predictedY.toFixed(3)}`)
+      .join(' ');
+
+    let actualPath = '';
+    let openSegment = false;
+    for (const point of points) {
+      if (point.actualY === null) {
+        openSegment = false;
+        continue;
+      }
+      const command = openSegment ? 'L' : 'M';
+      actualPath += `${command}${point.x.toFixed(3)},${point.actualY.toFixed(3)} `;
+      openSegment = true;
+    }
+    actualPath = actualPath.trim();
+
+    const zeroLine = yAt(0);
+    const tickCount = 5;
+    const yTicks = Array.from({ length: tickCount }, (_, idx) => {
+      const value = minValue + ((maxValue - minValue) * idx) / (tickCount - 1);
+      return { value, y: yAt(value) };
+    });
+
+    const labelIndices = Array.from(
+      new Set([0, Math.floor(count / 2), count - 1].filter((idx) => idx >= 0)),
+    );
+    const xLabels = labelIndices.map((index) => ({ x: xAt(index), time: records[index]?.candleTime ?? 0 }));
+
+    const resolvedCount = records.filter((item) => item.actualMovePct !== null).length;
+    const hits = records.filter((item) => item.outcome === 'HIT').length;
+    const hitRate = resolvedCount ? Math.round((hits / resolvedCount) * 100) : null;
+    const averageError =
+      resolvedCount > 0
+        ? Math.round(
+            (records
+              .filter((item) => item.actualMovePct !== null)
+              .reduce((acc, item) => acc + Math.abs((item.actualMovePct as number) - item.expectedMovePct), 0) /
+              resolvedCount) *
+              10,
+          ) / 10
+        : null;
+    const pending = records.length - resolvedCount;
+
+    return {
+      points,
+      predictedPath,
+      actualPath: actualPath.length ? actualPath : null,
+      zeroLine,
+      yTicks,
+      xLabels,
+      minValue,
+      maxValue,
+      resolvedCount,
+      hitRate,
+      averageError,
+      pending,
+    };
+  });
+
+  private readonly captureNewsPrediction = effect(() => {
+    const prediction = this.store.newsPrediction();
+    const candle = this.store.lastCandle();
+    if (prediction && candle) {
+      this.predictionHistory.recordNewsPrediction(prediction, candle);
+    }
+  });
+
   get intervalValue(): Interval {
     return this.intervalSignal();
   }
@@ -1171,6 +1415,10 @@ export class AppComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.reload();
+    this.newsService
+      .getLatestNews()
+      .pipe(take(1))
+      .subscribe((events) => this.store.setNewsEvents(events));
   }
 
   ngOnDestroy(): void {

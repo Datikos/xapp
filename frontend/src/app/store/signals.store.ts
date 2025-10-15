@@ -10,6 +10,7 @@ import {
   StrategyDiagnostics,
   TrendDetails,
 } from '../lib/strategy';
+import { buildNewsPrediction, NewsItem, NewsPrediction } from '../lib/news';
 
 @Injectable({ providedIn: 'root' })
 export class SignalsStore {
@@ -21,6 +22,7 @@ export class SignalsStore {
   readonly trendDetails = signal<TrendDetails | null>(null);
   readonly lastUpdated = signal<number | null>(null);
   readonly diagnostics = signal<StrategyDiagnostics | null>(null);
+  readonly newsEvents = signal<NewsItem[]>([]);
 
   readonly lastCandle = computed(() => {
     const items = this.candles();
@@ -273,6 +275,23 @@ export class SignalsStore {
     return { patterns, summary };
   });
 
+  readonly newsPrediction = computed<NewsPrediction | null>(() => {
+    const events = this.newsEvents();
+    if (!events.length) {
+      return null;
+    }
+    const trend = this.trendDetails();
+    const health = this.strategyHealth();
+    return (
+      buildNewsPrediction({
+        news: events,
+        trendBias: trend?.direction ?? 'NEUTRAL',
+        trendConfidence: trend?.confidence ?? 0,
+        expectancy: health?.expectancy ?? null,
+      }) ?? null
+    );
+  });
+
   constructor() {
     effect(() => {
       const data = this.candles();
@@ -295,6 +314,24 @@ export class SignalsStore {
         this.lastUpdated.set(null);
       }
     });
+  }
+
+  setNewsEvents(events: NewsItem[]): void {
+    this.newsEvents.set(events);
+  }
+
+  appendNewsEvents(events: NewsItem[]): void {
+    const existing = this.newsEvents();
+    const merged = [...events, ...existing].sort((a, b) => b.time - a.time);
+    const deduped: NewsItem[] = [];
+    const seen = new Set<string>();
+    for (const item of merged) {
+      if (!seen.has(item.id)) {
+        deduped.push(item);
+        seen.add(item.id);
+      }
+    }
+    this.newsEvents.set(deduped.slice(0, 30));
   }
 }
 
