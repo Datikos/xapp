@@ -21,10 +21,11 @@ import type {
 import { SignalsStore } from './store/signals.store';
 import type { PatternInsight, PatternSummary } from './store/signals.store';
 import { Interval } from './models/candle.model';
+import type { AssetOption } from './models/asset.model';
 import { MarketDataService } from './services/market-data.service';
 import { TrendFactor } from './lib/strategy';
 import { IncomeAdvice, generateIncomeAdvice } from './lib/advisor';
-import { NewsDataService } from './services/news-data.service';
+import { NewsDataService, NewsFilter } from './services/news-data.service';
 import { PredictionHistoryService } from './services/prediction-history.service';
 import { formatChange, formatCountdown, formatProfitFactor } from './lib/formatting';
 import { environment } from '../environments/environment';
@@ -80,7 +81,7 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
   template: `
     <main class="app">
       <header class="hero">
-        <h1>BTC/USDT Directional Playbook</h1>
+        <h1>{{ assetPairLabel() }} Directional Playbook</h1>
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
 
@@ -104,6 +105,14 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
               <span class="control-field-label">Provider</span>
               <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
                 <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
+              </select>
+            </label>
+            <label class="control-field">
+              <span class="control-field-label">Asset</span>
+              <select [ngModel]="assetValue" (ngModelChange)="onAssetChange($event)">
+                <option *ngFor="let asset of assets" [value]="asset.id">
+                  {{ asset.base }}/{{ asset.quote }} · {{ asset.name }}
+                </option>
               </select>
             </label>
             <label class="control-field">
@@ -151,7 +160,7 @@ import { PlaybookCardComponent } from './components/playbook-card/playbook-card.
             </div>
             <div class="control-stat">
               <span class="control-stat-label">Feed</span>
-              <span class="control-stat-value">{{ providerLabel() }}</span>
+              <span class="control-stat-value">{{ providerLabel() }} · {{ assetPairLabel() }}</span>
             </div>
           </div>
         </div>
@@ -339,6 +348,7 @@ export class AppComponent implements OnInit, OnDestroy {
 
   readonly intervals: Interval[] = environment.intervals;
   readonly providers: ProviderOption[] = environment.providers;
+  readonly assets: AssetOption[] = environment.assets;
   private readonly defaultProviderLabel = this.providers[0]?.label ?? 'Primary feed';
   readonly formatChange = formatChange;
   readonly formatProfitFactor = formatProfitFactor;
@@ -352,10 +362,13 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly autoStartLabel = `Auto refresh (${this.autoRefreshSeconds}s)`;
   readonly autoStopLabel = `Stop auto (${this.autoRefreshSeconds}s)`;
   readonly autoEnabledLabel = `Enabled · ${this.autoRefreshSeconds}s`;
+  private readonly defaultAssetId =
+    environment.defaultAssetId ?? (this.assets[0]?.id ?? 'btc');
   private readonly intervalSignal = signal<Interval>(environment.defaultInterval);
   private readonly providerSignal = signal<DataProvider>(
     (this.providers[0]?.id ?? 'binance') as DataProvider,
   );
+  private readonly assetSignal = signal<string>(this.defaultAssetId);
   readonly auto = signal(false);
   readonly loading = signal(false);
   readonly error = signal<string | null>(null);
@@ -372,6 +385,29 @@ export class AppComponent implements OnInit, OnDestroy {
   readonly providerLabel = computed(() => {
     const option = this.providers.find((item) => item.id === this.providerSignal());
     return option?.label ?? this.defaultProviderLabel;
+  });
+  readonly activeAsset = computed<AssetOption | null>(() => {
+    if (!this.assets.length) {
+      return null;
+    }
+    const assetId = this.assetSignal();
+    return this.assets.find((asset) => asset.id === assetId) ?? this.assets[0];
+  });
+  readonly assetPairLabel = computed(() => {
+    const asset = this.activeAsset();
+    if (!asset) {
+      return 'BTC/USDT';
+    }
+    return `${asset.base}/${asset.quote}`;
+  });
+  private readonly newsFilter = computed<NewsFilter>(() => {
+    const asset = this.activeAsset();
+    if (!asset) {
+      return { codes: ['BTC'], keywords: ['bitcoin', 'btc'] };
+    }
+    const codes = asset.newsCodes.length ? [...asset.newsCodes] : ['BTC'];
+    const keywords = asset.newsKeywords.length ? [...asset.newsKeywords] : ['bitcoin', 'btc'];
+    return { codes, keywords };
   });
   readonly trendNarrative = computed(() => {
     const details = this.store.trendDetails();
@@ -1472,6 +1508,14 @@ export class AppComponent implements OnInit, OnDestroy {
     this.providerSignal.set(value);
   }
 
+  get assetValue(): string {
+    return this.assetSignal();
+  }
+
+  set assetValue(value: string) {
+    this.assetSignal.set(value);
+  }
+
 
   onIntervalChange(value: Interval): void {
     if (value === this.intervalSignal()) {
@@ -1489,14 +1533,25 @@ export class AppComponent implements OnInit, OnDestroy {
     this.reload();
   }
 
+  onAssetChange(value: string): void {
+    if (value === this.assetSignal()) {
+      return;
+    }
+    const asset = this.assets.find((item) => item.id === value);
+    if (!asset) {
+      return;
+    }
+    this.assetValue = asset.id;
+    this.store.setNewsEvents([]);
+    this.reload();
+    this.fetchNewsForAsset();
+  }
+
   private pollHandle?: ReturnType<typeof setInterval>;
 
   ngOnInit(): void {
     this.reload();
-    this.newsService
-      .getLatestNews()
-      .pipe(take(1))
-      .subscribe((events) => this.store.setNewsEvents(events));
+    this.fetchNewsForAsset();
   }
 
   ngOnDestroy(): void {
@@ -1518,6 +1573,14 @@ export class AppComponent implements OnInit, OnDestroy {
         this.loading.set(false);
       },
     });
+  }
+
+  private fetchNewsForAsset(): void {
+    const filter = this.newsFilter();
+    this.newsService
+      .getLatestNews(filter)
+      .pipe(take(1))
+      .subscribe((events) => this.store.setNewsEvents(events));
   }
 
   toggleAuto(): void {
@@ -1562,8 +1625,30 @@ export class AppComponent implements OnInit, OnDestroy {
 
   private activeSymbol(): string {
     const provider = this.providerSignal();
-    const option = this.providers.find((item) => item.id === provider);
-    return option?.symbol ?? this.providers[0]?.symbol ?? 'BTCUSDT';
+    const asset = this.activeAsset();
+    if (asset) {
+      const assetSymbol = asset.providerSymbols[provider];
+      if (assetSymbol) {
+        return assetSymbol;
+      }
+    }
+
+    const providerOption = this.providers.find((item) => item.id === provider);
+    if (providerOption?.symbol) {
+      return providerOption.symbol;
+    }
+
+    if (asset) {
+      const firstProviderId = this.providers[0]?.id as DataProvider | undefined;
+      if (firstProviderId) {
+        const fallbackSymbol = asset.providerSymbols[firstProviderId];
+        if (fallbackSymbol) {
+          return fallbackSymbol;
+        }
+      }
+    }
+
+    return this.providers[0]?.symbol ?? 'BTCUSDT';
   }
 
 }

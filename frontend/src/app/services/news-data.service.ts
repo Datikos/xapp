@@ -79,6 +79,11 @@ const SAMPLE_NEWS: NewsItem[] = [
   },
 ];
 
+export interface NewsFilter {
+  codes: string[];
+  keywords: string[];
+}
+
 interface CryptoPanicResponse {
   results: CryptoPanicPost[];
 }
@@ -112,32 +117,34 @@ export class NewsDataService {
   private readonly http = inject(HttpClient);
   private readonly config = inject<NewsApiConfig>(NEWS_API_CONFIG);
 
-  getLatestNews(): Observable<NewsItem[]> {
+  getLatestNews(filter?: NewsFilter): Observable<NewsItem[]> {
+    const effectiveFilter = normaliseFilter(filter);
+
     if (!this.config.enabled || !this.config.apiToken) {
-      return this.getFallbackNews();
+      return this.getFallbackNews(effectiveFilter);
     }
 
     const params = new HttpParams()
       .set('auth_token', this.config.apiToken)
-      .set('currencies', 'BTC,ETH')
+      .set('currencies', effectiveFilter.codes.join(','))
       .set('public', 'true')
       .set('kind', 'news');
 
     return this.http
       .get<CryptoPanicResponse>(`${this.config.baseUrl ?? 'https://cryptopanic.com/api/v1/posts/'}`, { params })
       .pipe(
-        map((response) => this.mapCryptoPanicResponse(response)),
-        catchError(() => this.getFallbackNews()),
+        map((response) => this.mapCryptoPanicResponse(response, effectiveFilter)),
+        catchError(() => this.getFallbackNews(effectiveFilter)),
       );
   }
 
-  private mapCryptoPanicResponse(response: CryptoPanicResponse): NewsItem[] {
+  private mapCryptoPanicResponse(response: CryptoPanicResponse, filter: NewsFilter): NewsItem[] {
     if (!response?.results?.length) {
-      return cloneNews(SAMPLE_NEWS);
+      return this.getFilteredSample(filter);
     }
 
     const mapped = response.results
-      .filter((post) => isBtcRelated(post))
+      .filter((post) => isAssetRelated(post, filter))
       .slice(0, 20)
       .map((post) => {
         const summary = post.metadata?.description ?? post.title;
@@ -162,11 +169,17 @@ export class NewsDataService {
         } satisfies NewsItem;
       });
 
-    return mapped.length ? mapped : cloneNews(SAMPLE_NEWS);
+    return mapped.length ? mapped : this.getFilteredSample(filter);
   }
 
-  private getFallbackNews(): Observable<NewsItem[]> {
-    return of(cloneNews(SAMPLE_NEWS)).pipe(delay(120));
+  private getFallbackNews(filter: NewsFilter): Observable<NewsItem[]> {
+    return of(this.getFilteredSample(filter)).pipe(delay(120));
+  }
+
+  private getFilteredSample(filter: NewsFilter): NewsItem[] {
+    const clone = cloneNews(SAMPLE_NEWS);
+    const filtered = clone.filter((item) => isSampleRelevant(item, filter));
+    return filtered.length ? filtered : clone;
   }
 }
 
@@ -220,10 +233,33 @@ function deriveConfidence(votes: CryptoPanicVotes): number {
   return Math.max(35, Math.min(90, base));
 }
 
-function isBtcRelated(post: CryptoPanicPost): boolean {
-  if (post.currencies?.some((currency) => currency.code?.toUpperCase() === 'BTC')) {
+const DEFAULT_FILTER: NewsFilter = {
+  codes: ['BTC'],
+  keywords: ['bitcoin', 'btc', 'satoshi', 'btc/usdt'],
+};
+
+function normaliseFilter(filter?: NewsFilter): NewsFilter {
+  const codes = (filter?.codes ?? DEFAULT_FILTER.codes)
+    .map((code) => code.trim().toUpperCase())
+    .filter((code) => code.length);
+  const keywords = (filter?.keywords ?? DEFAULT_FILTER.keywords)
+    .map((keyword) => keyword.trim().toLowerCase())
+    .filter((keyword) => keyword.length);
+  return {
+    codes: codes.length ? Array.from(new Set(codes)) : DEFAULT_FILTER.codes,
+    keywords: keywords.length ? Array.from(new Set(keywords)) : DEFAULT_FILTER.keywords,
+  };
+}
+
+function isAssetRelated(post: CryptoPanicPost, filter: NewsFilter): boolean {
+  if (post.currencies?.some((currency) => filter.codes.includes(currency.code?.toUpperCase() ?? ''))) {
     return true;
   }
   const text = `${post.title} ${post.metadata?.description ?? ''}`.toLowerCase();
-  return text.includes('bitcoin') || text.includes('btc') || text.includes('satoshi') || text.includes('btc/usdt');
+  return filter.keywords.some((keyword) => keyword && text.includes(keyword));
+}
+
+function isSampleRelevant(item: NewsItem, filter: NewsFilter): boolean {
+  const text = `${item.headline} ${item.summary}`.toLowerCase();
+  return filter.keywords.some((keyword) => keyword && text.includes(keyword));
 }
