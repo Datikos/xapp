@@ -2,9 +2,9 @@ import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { map, Observable } from 'rxjs';
 
+import { environment } from '../../environments/environment';
 import { Candle, Interval } from '../models/candle.model';
-
-export type DataProvider = 'binance' | 'coinbase';
+import type { DataProvider } from '../models/provider.model';
 
 interface CoinbaseGranularity {
   granularity: number;
@@ -14,8 +14,8 @@ interface CoinbaseGranularity {
 @Injectable({ providedIn: 'root' })
 export class MarketDataService {
   private readonly http = inject(HttpClient);
-  private readonly binanceUrl = 'https://api.binance.com/api/v3/klines';
-  private readonly coinbaseUrl = 'https://api.exchange.coinbase.com/products';
+  private readonly binanceUrl = environment.marketData.binanceUrl;
+  private readonly coinbaseUrl = environment.marketData.coinbaseUrl;
 
   getKlines(
     symbol: string,

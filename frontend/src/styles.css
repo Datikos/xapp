@@ -493,6 +493,153 @@ button[disabled] {
   font-size: .7rem;
 }
 
+.price-card-body,
+.candle-card-body {
+  gap: 16px;
+}
+
+.price-chart,
+.candle-chart {
+  width: 100%;
+  border-radius: 12px;
+  background: rgba(15,23,42,.38);
+  border: 1px solid rgba(148,163,184,.14);
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.price-chart apx-chart,
+.candle-chart apx-chart {
+  display: block;
+  width: 100%;
+}
+
+.price-metrics,
+.candle-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.price-metric,
+.candle-metric {
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(15,23,42,.5);
+  border: 1px solid rgba(148,163,184,.12);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.price-metric-label,
+.candle-metric-label {
+  font-size: .75rem;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: #94a3b8;
+}
+
+.price-metric-value,
+.candle-metric-value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.price-metric-value.positive {
+  color: #bbf7d0;
+}
+
+.price-metric-value.negative {
+  color: #fecaca;
+}
+
+.price-metric-note,
+.candle-metric-note {
+  font-size: .75rem;
+  color: #64748b;
+}
+
+.price-chip,
+.candle-chip {
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148,163,184,.18);
+  background: rgba(15,23,42,.6);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.price-chip-label,
+.candle-chip-label {
+  font-size: .72rem;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #cbd5f5;
+}
+
+.price-chip-value,
+.candle-chip-value {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: #e2e8f0;
+}
+
+.price-chip-change,
+.candle-chip-note {
+  font-size: .78rem;
+  color: #94a3b8;
+}
+
+.price-chip--up {
+  border-color: rgba(34,197,94,.4);
+  background: linear-gradient(135deg, rgba(34,197,94,.2), rgba(15,23,42,.6));
+  box-shadow: 0 10px 24px rgba(34,197,94,.18);
+}
+
+.price-chip--up .price-chip-value {
+  color: #bbf7d0;
+}
+
+.price-chip--up .price-chip-change {
+  color: #86efac;
+}
+
+.price-chip--down {
+  border-color: rgba(248,113,113,.38);
+  background: linear-gradient(135deg, rgba(248,113,113,.22), rgba(15,23,42,.6));
+  box-shadow: 0 10px 24px rgba(248,113,113,.2);
+}
+
+.price-chip--down .price-chip-value {
+  color: #fecaca;
+}
+
+.price-chip--down .price-chip-change {
+  color: #fca5a5;
+}
+
+.candle-chip--up {
+  border-color: rgba(34,197,94,.35);
+  background: linear-gradient(135deg, rgba(34,197,94,.2), rgba(15,23,42,.58));
+}
+
+.candle-chip--up .candle-chip-value {
+  color: #bbf7d0;
+}
+
+.candle-chip--down {
+  border-color: rgba(248,113,113,.35);
+  background: linear-gradient(135deg, rgba(248,113,113,.22), rgba(15,23,42,.58));
+}
+
+.candle-chip--down .candle-chip-value {
+  color: #fecaca;
+}
+
 .lane-summaries {
   flex: 1 1 auto;
   display: grid;
