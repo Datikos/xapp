@@ -49,6 +49,15 @@ interface QuadrantChartPoint {
   };
 }
 
+interface DashboardTile {
+  id: string;
+  label: string;
+  value: string;
+  context?: string | null;
+  subtext?: string | null;
+  accent: 'bull' | 'bear' | 'info' | 'warn' | 'neutral';
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -60,6 +69,27 @@ interface QuadrantChartPoint {
         <h1>BTC/USDT Directional Playbook</h1>
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
+
+      <ng-container *ngIf="snapshotTiles() as tiles">
+        <section class="insight-strip" *ngIf="tiles.length">
+          <article
+            class="insight-chip"
+            *ngFor="let tile of tiles"
+            [class.insight-chip--bull]="tile.accent === 'bull'"
+            [class.insight-chip--bear]="tile.accent === 'bear'"
+            [class.insight-chip--info]="tile.accent === 'info'"
+            [class.insight-chip--warn]="tile.accent === 'warn'"
+            [class.insight-chip--neutral]="tile.accent === 'neutral'"
+          >
+            <header class="insight-chip-header">
+              <span class="insight-chip-label">{{ tile.label }}</span>
+              <span class="insight-chip-context" *ngIf="tile.context">{{ tile.context }}</span>
+            </header>
+            <p class="insight-chip-value">{{ tile.value }}</p>
+            <span class="insight-chip-subtext" *ngIf="tile.subtext">{{ tile.subtext }}</span>
+          </article>
+        </section>
+      </ng-container>
 
       <section class="card activity-card" *ngIf="predictionActivities() as activities">
         <header class="card-heading">
@@ -812,10 +842,10 @@ interface QuadrantChartPoint {
 
       .app {
         margin: 0 auto;
-        max-width: 940px;
+        max-width: 1120px;
         display: flex;
         flex-direction: column;
-        gap: 18px;
+        gap: 16px;
       }
     `,
   ],
@@ -912,6 +942,120 @@ export class AppComponent implements OnInit, OnDestroy {
       rationale: advice?.rationale ?? null,
       time: lastTime,
     };
+  });
+  readonly snapshotTiles = computed<DashboardTile[]>(() => {
+    const tiles: DashboardTile[] = [];
+
+    const live = this.liveRecommendation();
+    if (live) {
+      tiles.push({
+        id: 'direction',
+        label: 'Directional bias',
+        value:
+          live.direction === 'BULL'
+            ? 'Long leaning'
+            : live.direction === 'BEAR'
+              ? 'Short leaning'
+              : 'Neutral stance',
+        context: `${live.confidence}% · Score ${live.score}`,
+        subtext: live.rationale,
+        accent:
+          live.direction === 'BULL'
+            ? 'bull'
+            : live.direction === 'BEAR'
+              ? 'bear'
+              : 'neutral',
+      });
+    }
+
+    const news = this.store.newsPrediction();
+    if (news) {
+      tiles.push({
+        id: 'news',
+        label: 'News skew',
+        value:
+          news.bias === 'BULL'
+            ? 'Bullish catalysts'
+            : news.bias === 'BEAR'
+              ? 'Bearish catalysts'
+              : 'Balanced flow',
+        context: `${this.formatChange(news.expectedMovePct)} · ~${news.horizonHours}h`,
+        subtext: `Confidence ${news.confidence}%`,
+        accent:
+          news.bias === 'BULL'
+            ? 'bull'
+            : news.bias === 'BEAR'
+              ? 'bear'
+              : 'info',
+      });
+    }
+
+    const health = this.store.strategyHealth();
+    if (health) {
+      tiles.push({
+        id: 'health',
+        label: 'Strategy health',
+        value: this.formatChange(health.expectancy),
+        context: `PF ${this.formatProfitFactor(health.profitFactor)}`,
+        subtext:
+          health.maxDrawdown !== null
+            ? `Drawdown ${this.formatChange(health.maxDrawdown)}`
+            : null,
+        accent: health.expectancy > 0 ? 'bull' : health.expectancy < 0 ? 'bear' : 'neutral',
+      });
+    }
+
+    const chart = this.predictionChart();
+    if (chart && chart.tradeCount) {
+      const hitRate = chart.hitRate;
+      let accent: DashboardTile['accent'] = 'info';
+      if (hitRate !== null) {
+        if (hitRate >= 60) {
+          accent = 'bull';
+        } else if (hitRate <= 40) {
+          accent = 'bear';
+        } else {
+          accent = 'warn';
+        }
+      }
+      tiles.push({
+        id: 'validation',
+        label: 'Validation track',
+        value: hitRate !== null ? `${hitRate}% hit rate` : 'Awaiting data',
+        context: `${chart.tradeCount} trades assessed`,
+        subtext:
+          chart.averageReturn !== null ? `Avg ${this.formatChange(chart.averageReturn)}` : null,
+        accent,
+      });
+    }
+
+    const patternSummary = this.patternSummary();
+    if (patternSummary) {
+      const avgReturn = patternSummary.meanAverageReturn;
+      tiles.push({
+        id: 'patterns',
+        label: 'Pattern bias',
+        value:
+          patternSummary.dominantBias === 'BULL'
+            ? 'Bullish setups'
+            : patternSummary.dominantBias === 'BEAR'
+              ? 'Bearish setups'
+              : 'Mixed setups',
+        context:
+          patternSummary.combinedWinRate !== null
+            ? `Win ${patternSummary.combinedWinRate}%`
+            : 'Win rate n/a',
+        subtext: avgReturn !== null ? `Avg ${this.formatChange(avgReturn)}` : null,
+        accent:
+          patternSummary.dominantBias === 'BULL'
+            ? 'bull'
+            : patternSummary.dominantBias === 'BEAR'
+              ? 'bear'
+              : 'neutral',
+      });
+    }
+
+    return tiles.slice(0, 5);
   });
   readonly groupedTrendFactors = computed(() => {
     const details = this.store.trendDetails();

@@ -11,7 +11,7 @@ body {
   background: rgba(15,23,42,.75);
   border: 1px solid rgba(148,163,184,.12);
   border-radius: 12px;
-  padding: 18px;
+  padding: 16px;
   box-shadow: 0 14px 32px rgba(15,23,42,.3);
   backdrop-filter: blur(8px);
 }
@@ -32,10 +32,121 @@ body {
   color: #94a3b8;
 }
 
+.insight-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.insight-chip {
+  border-radius: 12px;
+  border: 1px solid rgba(148,163,184,.16);
+  padding: 14px 16px;
+  background: rgba(15,23,42,.55);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-shadow: 0 12px 28px rgba(15,23,42,.28);
+  position: relative;
+  overflow: hidden;
+}
+
+.insight-chip::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  mix-blend-mode: screen;
+  opacity: .22;
+  background: radial-gradient(circle at top right, rgba(148,163,184,.45), transparent 55%);
+}
+
+.insight-chip-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  font-size: .78rem;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: #cbd5f5;
+}
+
+.insight-chip-label {
+  font-weight: 600;
+}
+
+.insight-chip-context {
+  font-size: .72rem;
+  color: rgba(226,232,240,.85);
+}
+
+.insight-chip-value {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 600;
+  color: #f8fafc;
+}
+
+.insight-chip-subtext {
+  font-size: .78rem;
+  color: #94a3b8;
+}
+
+.insight-chip--bull {
+  border-color: rgba(34,197,94,.42);
+  background: linear-gradient(145deg, rgba(34,197,94,.23), rgba(15,23,42,.62));
+  box-shadow: 0 14px 32px rgba(34,197,94,.18);
+}
+
+.insight-chip--bull .insight-chip-value {
+  color: #bbf7d0;
+}
+
+.insight-chip--bear {
+  border-color: rgba(248,113,113,.35);
+  background: linear-gradient(145deg, rgba(248,113,113,.22), rgba(15,23,42,.6));
+  box-shadow: 0 14px 32px rgba(248,113,113,.22);
+}
+
+.insight-chip--bear .insight-chip-value {
+  color: #fecaca;
+}
+
+.insight-chip--info {
+  border-color: rgba(59,130,246,.32);
+  background: linear-gradient(145deg, rgba(59,130,246,.2), rgba(15,23,42,.62));
+  box-shadow: 0 14px 32px rgba(59,130,246,.18);
+}
+
+.insight-chip--info .insight-chip-value {
+  color: #bae6fd;
+}
+
+.insight-chip--warn {
+  border-color: rgba(251,191,36,.32);
+  background: linear-gradient(145deg, rgba(251,191,36,.22), rgba(15,23,42,.58));
+  box-shadow: 0 14px 32px rgba(251,191,36,.16);
+}
+
+.insight-chip--warn .insight-chip-value {
+  color: #fde68a;
+}
+
+.insight-chip--neutral {
+  border-color: rgba(148,163,184,.22);
+  background: linear-gradient(145deg, rgba(148,163,184,.18), rgba(15,23,42,.58));
+}
+
+.insight-chip--neutral .insight-chip-value {
+  color: #e2e8f0;
+}
+
 .layout-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
   align-items: stretch;
 }
 
@@ -103,8 +214,8 @@ button[disabled] {
 .status-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .status-card {
@@ -355,7 +466,7 @@ button[disabled] {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .card-heading--split {
@@ -393,7 +504,7 @@ button[disabled] {
 .card-body {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
 .chart-body {
