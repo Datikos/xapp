@@ -6,6 +6,7 @@ import {
   generateSignals,
   NearMiss,
   Signal,
+  SignalType,
   StrategyDiagnostics,
   TrendDetails,
 } from '../lib/strategy';
@@ -173,6 +174,105 @@ export class SignalsStore {
     };
   });
 
+  readonly patternAnalytics = computed<PatternAnalytics>(() => {
+    const completed = this.decisionValidations().filter(
+      (item) => item.directionChangePct !== null && item.outcome !== 'PENDING',
+    );
+    if (!completed.length) {
+      return { patterns: [], summary: null };
+    }
+
+    const signalLookup = new Map<number, Signal>();
+    for (const signal of this.signals()) {
+      if (Number.isFinite(signal.time)) {
+        signalLookup.set(signal.time, signal);
+      }
+    }
+
+    interface Bucket {
+      label: string;
+      type: SignalType;
+      totalReturn: number;
+      count: number;
+      wins: number;
+      losses: number;
+      maxGain: number;
+      maxLoss: number;
+    }
+
+    const buckets = new Map<string, Bucket>();
+    for (const validation of completed) {
+      const signal = signalLookup.get(validation.signalTime);
+      const label = signal?.reason ?? 'Unclassified pattern';
+      const type = signal?.type ?? validation.signalType;
+      const key = `${label}::${type}`;
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = {
+          label,
+          type,
+          totalReturn: 0,
+          count: 0,
+          wins: 0,
+          losses: 0,
+          maxGain: Number.NEGATIVE_INFINITY,
+          maxLoss: Number.POSITIVE_INFINITY,
+        };
+        buckets.set(key, bucket);
+      }
+
+      const change = validation.directionChangePct as number;
+      bucket.totalReturn += change;
+      bucket.count += 1;
+      if (change > 0) {
+        bucket.wins += 1;
+        bucket.maxGain = Math.max(bucket.maxGain, change);
+      } else if (change < 0) {
+        bucket.losses += 1;
+        bucket.maxLoss = Math.min(bucket.maxLoss, change);
+      }
+    }
+
+    const patterns = Array.from(buckets.values())
+      .map((bucket) => {
+        const averageReturn = bucket.count ? bucket.totalReturn / bucket.count : 0;
+        const winRate = bucket.count ? Math.round((bucket.wins / bucket.count) * 100) : 0;
+        const bestReturn = bucket.maxGain === Number.NEGATIVE_INFINITY ? null : bucket.maxGain;
+        const worstReturn = bucket.maxLoss === Number.POSITIVE_INFINITY ? null : bucket.maxLoss;
+        const maxAdverse = worstReturn === null ? null : Math.abs(worstReturn);
+        const riskReward =
+          bestReturn !== null && maxAdverse && maxAdverse > 0 ? +(bestReturn / maxAdverse).toFixed(2) : null;
+        return {
+          label: bucket.label,
+          type: bucket.type,
+          occurrences: bucket.count,
+          averageReturn,
+          winRate,
+          bestReturn,
+          worstReturn,
+          riskReward,
+        };
+      })
+      .filter((pattern) => pattern.occurrences >= 2)
+      .sort((a, b) => b.occurrences - a.occurrences || b.averageReturn - a.averageReturn)
+      .slice(0, 6);
+
+    const leaders = patterns.slice(0, 3);
+    let summary: PatternSummary | null = null;
+    if (leaders.length > 0) {
+      const bullishCount = leaders.filter((item) => item.averageReturn >= 0).length;
+      const dominantBias: PatternSummary['dominantBias'] =
+        bullishCount >= leaders.length / 2 ? 'BULL' : 'BEAR';
+      summary = {
+        dominantBias,
+        meanAverageReturn: leaders.reduce((acc, item) => acc + item.averageReturn, 0) / leaders.length,
+        combinedWinRate: Math.round(leaders.reduce((acc, item) => acc + item.winRate, 0) / leaders.length),
+      };
+    }
+
+    return { patterns, summary };
+  });
+
   constructor() {
     effect(() => {
       const data = this.candles();
@@ -233,6 +333,28 @@ export interface StrategyHealth {
   bestLossStreak: number;
   lastOutcome: DecisionValidation['outcome'];
   lastReturn: number | null;
+}
+
+export interface PatternAnalytics {
+  patterns: PatternInsight[];
+  summary: PatternSummary | null;
+}
+
+export interface PatternInsight {
+  label: string;
+  type: SignalType;
+  occurrences: number;
+  averageReturn: number;
+  winRate: number;
+  bestReturn: number | null;
+  worstReturn: number | null;
+  riskReward: number | null;
+}
+
+export interface PatternSummary {
+  dominantBias: 'BULL' | 'BEAR';
+  meanAverageReturn: number;
+  combinedWinRate: number;
 }
 
 function computeCorrelation(xValues: number[], yValues: number[]): number | null {

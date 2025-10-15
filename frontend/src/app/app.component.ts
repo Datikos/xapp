@@ -26,114 +26,261 @@ interface ProviderOption {
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
 
-      <section class="card chart-card" *ngIf="predictionChart() as chart">
+      <section class="card activity-card" *ngIf="predictionActivities() as activities">
         <header class="card-heading">
-          <h2>Prediction vs Reality</h2>
-          <span class="card-subtitle">Cumulative return path and realised outcomes.</span>
+          <h2>Live Directional Guidance</h2>
+          <span class="card-subtitle">Current bias with recent long / short triggers.</span>
+        </header>
+        <div class="card-body">
+          <div class="activity-live" *ngIf="liveRecommendation() as live">
+            <div class="activity-live-header">
+              <span class="activity-bias" [class.long]="live.direction === 'BULL'" [class.short]="live.direction === 'BEAR'">
+                {{ live.direction === 'BULL' ? 'Long bias' : live.direction === 'BEAR' ? 'Short bias' : 'Neutral stance' }}
+              </span>
+              <span class="activity-confidence">{{ live.confidence }}% confidence · Score {{ live.score }}</span>
+            </div>
+            <p class="activity-live-headline" [class.positive]="live.tone === 'positive'" [class.caution]="live.tone === 'caution'">
+              {{ live.headline }}
+            </p>
+            <p class="activity-live-meta">
+              <ng-container *ngIf="live.time; else activityNow">
+                Updated {{ live.time | date: 'HH:mm' }} · {{ live.time | date: 'MMM d' }}
+              </ng-container>
+              <ng-template #activityNow>Updated moments ago</ng-template>
+              <span *ngIf="live.rationale"> · {{ live.rationale }}</span>
+            </p>
+          </div>
+          <ng-container *ngIf="activities.length; else activityEmpty">
+            <ul class="activity-list">
+              <li *ngFor="let item of activities">
+                <div class="activity-marker" [class.long]="item.type === 'LONG'" [class.short]="item.type === 'SHORT'">
+                  <span>{{ item.type }}</span>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-headline">
+                    <span class="activity-source" [class.primary]="item.band === 'primary'" [class.fast]="item.band === 'fast'">
+                      {{ item.band === 'primary' ? 'Primary' : 'Fast' }}
+                    </span>
+                    <span class="activity-reason">{{ item.reason }}</span>
+                  </div>
+                  <div class="activity-meta">
+                    <span>{{ item.time | date: 'HH:mm' }} · {{ item.time | date: 'MMM d' }}</span>
+                    <span>Entry @ {{ item.price | number: '1.2-2' }}</span>
+                  </div>
+                </div>
+              </li>
+            </ul>
+          </ng-container>
+          <ng-template #activityEmpty>
+            <p class="activity-empty">Signals will appear here once enough confluence is captured.</p>
+          </ng-template>
+        </div>
+      </section>
+
+      <section class="card chart-card" *ngIf="predictionChart() as chart">
+        <header class="card-heading card-heading--split">
+          <div>
+            <h2>Prediction vs Reality</h2>
+            <span class="card-subtitle">How realised returns lined up against directional calls.</span>
+          </div>
+          <div class="chart-legend">
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--line"></span>
+              Cumulative return
+            </span>
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--win"></span>
+              Winning trade
+            </span>
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--loss"></span>
+              Losing trade
+            </span>
+          </div>
         </header>
         <div class="card-body chart-body">
-          <div class="prediction-chart">
+          <div class="chart-overview">
+            <div class="chart-stats">
+              <div class="chart-stat">
+                <span class="chart-stat-label">Hit rate</span>
+                <span class="chart-stat-value">
+                  {{ chart.hitRate !== null ? chart.hitRate + '%' : 'n/a' }}
+                </span>
+                <span class="chart-stat-note">{{ chart.wins }} wins · {{ chart.losses }} losses</span>
+              </div>
+              <div class="chart-stat">
+                <span class="chart-stat-label">Cumulative return</span>
+                <span class="chart-stat-value">{{ formatChange(chart.totalReturn) }}</span>
+                <span class="chart-stat-note">Avg trade {{ formatChange(chart.averageReturn) }}</span>
+              </div>
+              <div class="chart-stat">
+                <span class="chart-stat-label">Signal alignment</span>
+                <span class="chart-stat-value">
+                  {{ chart.correlation !== null ? (chart.correlation | number: '1.2-2') : 'n/a' }}
+                </span>
+                <span class="chart-stat-note">{{ correlationDescriptor(chart.correlation) }}</span>
+              </div>
+            </div>
+            <p class="chart-remark">
+              {{ predictionNarrative(chart.totalReturn, chart.hitRate, chart.correlation, chart.wins + chart.losses) }}
+            </p>
+          </div>
+          <div class="prediction-chart outcome-quadrant">
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <defs>
-                <linearGradient id="chartAreaGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stop-color="rgba(56,189,248,0.55)"></stop>
-                  <stop offset="100%" stop-color="rgba(56,189,248,0)"></stop>
-                </linearGradient>
-              </defs>
               <rect class="chart-panel" x="0" y="0" width="100" height="100"></rect>
-              <g class="chart-grid">
-                <ng-container *ngFor="let tick of chart.yTicks">
-                  <line class="chart-grid-line" x1="0" [attr.y1]="tick.y" x2="100" [attr.y2]="tick.y"></line>
-                </ng-container>
-              </g>
-              <g class="chart-y-labels">
-                <ng-container *ngFor="let tick of chart.yTicks">
-                  <text class="chart-tick-label" x="1.6" [attr.y]="tick.y - 1.2">{{ formatChange(tick.value) }}</text>
-                </ng-container>
-              </g>
-              <path class="chart-area" [attr.d]="chart.areaPath" fill="url(#chartAreaGradient)"></path>
-              <path class="chart-line" [attr.d]="chart.linePath"></path>
-              <line class="chart-zero-line" x1="0" [attr.y1]="chart.zeroLine" x2="100" [attr.y2]="chart.zeroLine"></line>
-              <g class="chart-bars">
-                <ng-container *ngFor="let bar of chart.bars">
+              <g class="quadrant-lanes">
+                <ng-container *ngFor="let lane of chart.lanes">
                   <rect
-                    class="chart-bar"
-                    [class.bar-positive]="bar.positive"
-                    [class.bar-negative]="!bar.positive"
-                    [attr.x]="bar.x"
-                    [attr.y]="bar.y"
-                    [attr.width]="bar.width"
-                    [attr.height]="bar.height"
-                  >
-                    <title>
-                      {{ formatChange(bar.actual) }} outcome: {{ bar.outcome }} (expected
-                      {{ bar.expected === 1 ? 'LONG' : bar.expected === -1 ? 'SHORT' : 'FLAT' }})
-                    </title>
-                  </rect>
-                  <line
-                    *ngIf="bar.expected === 1"
-                    class="expected-marker expected-up"
-                    [attr.x1]="bar.center"
-                    [attr.x2]="bar.center"
-                    [attr.y1]="bar.y - 1.5"
-                    [attr.y2]="bar.y - 5"
-                  ></line>
-                  <line
-                    *ngIf="bar.expected === -1"
-                    class="expected-marker expected-down"
-                    [attr.x1]="bar.center"
-                    [attr.x2]="bar.center"
-                    [attr.y1]="chart.baselineY + 1"
-                    [attr.y2]="chart.baselineY + 5"
-                  ></line>
-                  <circle
-                    *ngIf="bar.expected === 0"
-                    class="expected-marker expected-flat"
-                    [attr.cx]="bar.center"
-                    [attr.cy]="chart.baselineY + 1.8"
-                    r="1.1"
-                  ></circle>
+                    class="lane-band"
+                    [class.lane-positive]="lane.expected === 1"
+                    [class.lane-negative]="lane.expected === -1"
+                    [class.lane-neutral]="lane.expected === 0"
+                    [attr.x]="chart.bounds.left"
+                    [attr.y]="lane.bandY"
+                    [attr.width]="chart.bounds.width"
+                    [attr.height]="lane.bandHeight"
+                  ></rect>
+                  <rect
+                    class="lane-alignment"
+                    *ngIf="lane.alignmentRect"
+                    [attr.x]="lane.alignmentRect.x"
+                    [attr.y]="lane.bandY"
+                    [attr.width]="lane.alignmentRect.width"
+                    [attr.height]="lane.bandHeight"
+                  ></rect>
+                  <text class="lane-label" [attr.x]="lane.labelX" [attr.y]="lane.labelY">
+                    {{ lane.label }}
+                  </text>
                 </ng-container>
               </g>
-              <g class="chart-points">
-                <circle
-                  *ngFor="let point of chart.scatter"
-                  class="chart-point"
+              <line
+                class="quadrant-axis"
+                [attr.x1]="chart.zeroX"
+                [attr.y1]="chart.bounds.top"
+                [attr.x2]="chart.zeroX"
+                [attr.y2]="chart.bounds.bottom"
+              ></line>
+              <g class="quadrant-ticks">
+                <ng-container *ngFor="let tick of chart.ticks">
+                  <line
+                    class="quadrant-tick"
+                    [attr.x1]="tick.x"
+                    [attr.x2]="tick.x"
+                    [attr.y1]="chart.bounds.top"
+                    [attr.y2]="chart.bounds.bottom"
+                  ></line>
+                  <text class="quadrant-tick-label" [attr.x]="tick.x" [attr.y]="chart.bounds.bottom + 6">
+                    {{ formatChange(tick.value) }}
+                  </text>
+                </ng-container>
+              </g>
+              <g class="quadrant-points">
+                <g
+                  *ngFor="let point of chart.points"
+                  class="quadrant-point"
                   [class.point-win]="point.outcome === 'WIN'"
                   [class.point-loss]="point.outcome === 'LOSS'"
                   [class.point-pending]="point.outcome === 'PENDING'"
-                  [attr.cx]="point.x"
-                  [attr.cy]="point.y"
-                  r="2.2"
+                  [class.point-aligned]="point.aligned"
                 >
+                  <circle [attr.cx]="point.x" [attr.cy]="point.y" [attr.r]="point.radius"></circle>
+                  <text
+                    *ngIf="point.showLabel"
+                    class="quadrant-point-label"
+                    [attr.x]="point.labelX"
+                    [attr.y]="point.labelY"
+                  >
+                    {{ formatChange(point.actual) }}
+                  </text>
                   <title>
                     {{ point.outcome }} {{ formatChange(point.actual) }} ({{ point.expected === 1 ? 'LONG' : point.expected === -1 ? 'SHORT' : 'FLAT' }})
                     · {{ point.time | date: 'yyyy-MM-dd HH:mm' }}
                   </title>
-                </circle>
-              </g>
-              <line class="chart-x-axis" x1="0" [attr.y1]="chart.xAxisY" x2="100" [attr.y2]="chart.xAxisY"></line>
-              <g class="chart-x-labels">
-                <ng-container *ngFor="let label of chart.xLabels">
-                  <text class="chart-x-label" [attr.x]="label.x" [attr.y]="chart.xAxisY + 6">{{ label.time | date: 'MM-dd' }}</text>
-                </ng-container>
+                </g>
               </g>
             </svg>
+            <div class="lane-summaries">
+              <article class="lane-card" *ngFor="let lane of chart.laneSummaries">
+                <header>
+                  <span class="lane-card-label">{{ lane.label }}</span>
+                  <span class="lane-card-total">{{ lane.total }} trades</span>
+                </header>
+                <p class="lane-card-metric">
+                  Alignment
+                  <span class="lane-card-value">
+                    {{ lane.alignmentRate !== null ? lane.alignmentRate + '%' : 'n/a' }}
+                  </span>
+                </p>
+                <p class="lane-card-metric">
+                  Avg return
+                  <span class="lane-card-value">{{ lane.averageReturn !== null ? formatChange(lane.averageReturn) : 'n/a' }}</span>
+                </p>
+                <p class="lane-card-meta">
+                  Wins {{ lane.wins }} · Losses {{ lane.losses }} · Pending {{ lane.pending }}
+                </p>
+              </article>
+            </div>
           </div>
-          <dl class="chart-summary">
-            <div>
-              <dt>Correlation</dt>
-              <dd>{{ chart.correlation !== null ? (chart.correlation | number: '1.2-2') : 'n/a' }}</dd>
-            </div>
-            <div>
-              <dt>Generated Return</dt>
-              <dd>{{ formatChange(chart.totalReturn) }}</dd>
-            </div>
-            <div>
-              <dt>Evaluated Trades</dt>
-              <dd>{{ chart.scatter.length }}</dd>
-            </div>
-          </dl>
+        </div>
+      </section>
+
+      <section class="card pattern-card" *ngIf="patternInsights() as patterns">
+        <header class="card-heading card-heading--split">
+          <div>
+            <h2>Pattern Research</h2>
+            <span class="card-subtitle">Average outcomes for recurring signal setups.</span>
+          </div>
+          <div class="pattern-summary" *ngIf="patternSummary() as summary">
+            <span class="pattern-summary-bias" [class.long]="summary.dominantBias === 'BULL'" [class.short]="summary.dominantBias === 'BEAR'">
+              {{ summary.dominantBias === 'BULL' ? 'Bullish skew' : 'Bearish skew' }}
+            </span>
+            <span class="pattern-summary-stat">Avg {{ formatChange(summary.meanAverageReturn) }}</span>
+            <span class="pattern-summary-stat">Win rate {{ summary.combinedWinRate }}%</span>
+          </div>
+        </header>
+        <div class="card-body pattern-body">
+          <ng-container *ngIf="patterns.length; else patternEmpty">
+            <ul class="pattern-list">
+              <li *ngFor="let pattern of patterns">
+                <div class="pattern-header">
+                  <span class="pattern-label">{{ pattern.label }}</span>
+                  <span class="pattern-pill" [class.long-pill]="pattern.type === 'LONG'" [class.short-pill]="pattern.type === 'SHORT'">
+                    {{ pattern.type }}
+                  </span>
+                </div>
+                <div class="pattern-metrics">
+                  <div>
+                    <span class="pattern-metric-label">Avg Return</span>
+                    <span class="pattern-metric-value">{{ formatChange(pattern.averageReturn) }}</span>
+                  </div>
+                  <div>
+                    <span class="pattern-metric-label">Win Rate</span>
+                    <span class="pattern-metric-value">{{ pattern.winRate }}%</span>
+                  </div>
+                  <div>
+                    <span class="pattern-metric-label">Sample Size</span>
+                    <span class="pattern-metric-value">{{ pattern.occurrences }}</span>
+                  </div>
+                  <div>
+                    <span class="pattern-metric-label">Risk / Reward</span>
+                    <span class="pattern-metric-value">
+                      {{ pattern.riskReward !== null ? pattern.riskReward : 'n/a' }}
+                    </span>
+                  </div>
+                </div>
+                <div class="pattern-range">
+                  <span class="pattern-range-label">Range</span>
+                  <span class="pattern-range-value">
+                    {{ pattern.bestReturn !== null ? formatChange(pattern.bestReturn) : 'n/a' }} /
+                    {{ pattern.worstReturn !== null ? formatChange(pattern.worstReturn) : 'n/a' }}
+                  </span>
+                </div>
+              </li>
+            </ul>
+          </ng-container>
+          <ng-template #patternEmpty>
+            <p class="pattern-empty">Not enough completed trades to surface pattern insights yet.</p>
+          </ng-template>
         </div>
       </section>
 
@@ -276,48 +423,107 @@ interface ProviderOption {
         </section>
 
         <section class="card insights" *ngIf="store.trendDetails() as trendDetails">
-          <header class="card-heading">
-            <h2>Trend Confidence</h2>
-            <span class="card-subtitle">EMA, MACD, and RSI blend for current bias.</span>
+          <header class="card-heading card-heading--split">
+            <div>
+              <h2>Trend Confidence</h2>
+              <span class="card-subtitle">EMA, MACD, and RSI blend for current bias.</span>
+            </div>
+            <div class="trend-heading-pill">
+              <span class="trend-badge" [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
+                {{ trendDetails.direction }} · {{ trendDetails.confidence }}%
+              </span>
+              <span class="trend-score">Score {{ trendDetails.score }}</span>
+            </div>
           </header>
           <div class="card-body trend-body">
-            <div class="trend-metrics">
-              <div class="metric">
-                <span class="metric-label">Bias</span>
-                <span class="metric-value" [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
-                  {{ trendDetails.direction }}
-                </span>
-                <span class="metric-note">{{ trendNarrative() }}</span>
-              </div>
-              <div class="metric">
-                <span class="metric-label">Confidence</span>
-                <span class="metric-value">{{ trendDetails.confidence }}%</span>
-                <div class="metric-bar">
-                  <div class="metric-bar-fill" [style.width.%]="trendDetails.confidence"></div>
+            <div class="trend-overview">
+              <p class="trend-narrative">{{ trendNarrative() }}</p>
+              <div class="confidence-meter">
+                <div class="confidence-meter-track">
+                  <div
+                    class="confidence-meter-fill"
+                    [style.width.%]="trendDetails.confidence"
+                    [class.confidence-strong]="trendDetails.confidence >= 65"
+                    [class.confidence-medium]="trendDetails.confidence >= 45 && trendDetails.confidence < 65"
+                  ></div>
+                </div>
+                <div class="confidence-meter-meta">
+                  <span>0%</span>
+                  <span>{{ trendDetails.confidence }}%</span>
+                  <span>100%</span>
                 </div>
               </div>
-              <div class="metric">
-                <span class="metric-label">Score</span>
-                <span class="metric-value">{{ trendDetails.score }}</span>
-                <span class="metric-note">Range −4 to +4</span>
+              <div class="trend-mini-metrics">
+                <div class="mini-metric">
+                  <span class="mini-label">Bias</span>
+                  <span class="mini-value" [class.long]="trendDetails.direction === 'BULL'" [class.short]="trendDetails.direction === 'BEAR'">
+                    {{ trendDetails.direction }}
+                  </span>
+                </div>
+                <div class="mini-metric">
+                  <span class="mini-label">Confidence</span>
+                  <span class="mini-value">{{ trendDetails.confidence }}%</span>
+                </div>
+                <div class="mini-metric">
+                  <span class="mini-label">Score</span>
+                  <span class="mini-value">{{ trendDetails.score }}</span>
+                </div>
               </div>
             </div>
 
-            <ul class="factor-list">
-              <li *ngFor="let factor of trendDetails.factors" [class.bullish]="factor.direction === 'BULL'" [class.bearish]="factor.direction === 'BEAR'">
-                <div class="factor-row">
-                  <span class="pill small" [class.long-pill]="factor.direction === 'BULL'" [class.short-pill]="factor.direction === 'BEAR'">
-                    {{ factor.direction }}
-                  </span>
-                  <span class="factor-label">{{ factor.label }}</span>
-                  <span class="factor-weight">w{{ factor.weight }}</span>
-                </div>
-                <div class="factor-bar" [class.positive]="factor.contribution > 0" [class.negative]="factor.contribution < 0">
-                  <div class="factor-bar-fill" [style.width.%]="factorIntensity(factor)"></div>
-                </div>
-                <p class="factor-detail">{{ factor.detail }}</p>
-              </li>
-            </ul>
+            <div class="trend-factor-groups" *ngIf="groupedTrendFactors() as buckets">
+              <div class="factor-column">
+                <h3>Tailwinds</h3>
+                <ng-container *ngIf="buckets.tailwinds.length; else tailwindEmpty">
+                  <article class="factor-card bullish" *ngFor="let factor of buckets.tailwinds">
+                    <header class="factor-card-header">
+                      <span class="pill small long-pill">Bullish</span>
+                      <span class="factor-label">{{ factor.label }}</span>
+                      <span class="factor-weight">w{{ factor.weight }}</span>
+                    </header>
+                    <div class="factor-strength">
+                      <div class="factor-strength-fill" [style.width.%]="factorIntensity(factor)"></div>
+                    </div>
+                    <p class="factor-detail">{{ factor.detail }}</p>
+                  </article>
+                </ng-container>
+                <ng-template #tailwindEmpty>
+                  <p class="factor-empty">No bullish support right now.</p>
+                </ng-template>
+              </div>
+
+              <div class="factor-column">
+                <h3>Headwinds</h3>
+                <ng-container *ngIf="buckets.headwinds.length; else headwindEmpty">
+                  <article class="factor-card bearish" *ngFor="let factor of buckets.headwinds">
+                    <header class="factor-card-header">
+                      <span class="pill small short-pill">Bearish</span>
+                      <span class="factor-label">{{ factor.label }}</span>
+                      <span class="factor-weight">w{{ factor.weight }}</span>
+                    </header>
+                    <div class="factor-strength negative">
+                      <div class="factor-strength-fill" [style.width.%]="factorIntensity(factor)"></div>
+                    </div>
+                    <p class="factor-detail">{{ factor.detail }}</p>
+                  </article>
+                </ng-container>
+                <ng-template #headwindEmpty>
+                  <p class="factor-empty">No bearish pressure detected.</p>
+                </ng-template>
+              </div>
+
+              <div class="factor-column neutral" *ngIf="buckets.neutral.length">
+                <h3>Neutral Reads</h3>
+                <article class="factor-card neutral" *ngFor="let factor of buckets.neutral">
+                  <header class="factor-card-header">
+                    <span class="pill small">Neutral</span>
+                    <span class="factor-label">{{ factor.label }}</span>
+                    <span class="factor-weight">w{{ factor.weight }}</span>
+                  </header>
+                  <p class="factor-detail">{{ factor.detail }}</p>
+                </article>
+              </div>
+            </div>
           </div>
         </section>
 
@@ -581,6 +787,68 @@ export class AppComponent implements OnInit, OnDestroy {
     const alignment = Math.abs(score) >= 3 ? 'with clear confluence' : Math.abs(score) >= 2 ? 'with supportive signals' : 'but still tentative';
     return `${tone} ${bias} bias ${alignment}`;
   });
+  readonly predictionActivities = computed(() => {
+    const primarySignals = this.store.signals();
+    const fastSignals = this.store.fastSignals();
+    if (!primarySignals.length && !fastSignals.length) {
+      return [];
+    }
+
+    const primaryFeed = primarySignals.map((signal) => ({
+      id: `primary-${signal.time}`,
+      band: 'primary' as const,
+      type: signal.type,
+      time: signal.time,
+      price: signal.price,
+      reason: signal.reason,
+    }));
+    const fastFeed = fastSignals.map((signal) => ({
+      id: `fast-${signal.time}`,
+      band: 'fast' as const,
+      type: signal.type,
+      time: signal.time,
+      price: signal.price,
+      reason: signal.reason,
+    }));
+
+    return [...primaryFeed, ...fastFeed]
+      .filter((item) => Number.isFinite(item.time))
+      .sort((a, b) => b.time - a.time)
+      .slice(0, 8);
+  });
+  readonly patternInsights = computed(() => this.store.patternAnalytics().patterns);
+  readonly patternSummary = computed(() => this.store.patternAnalytics().summary);
+  readonly liveRecommendation = computed(() => {
+    const trend = this.store.trendDetails();
+    if (!trend) {
+      return null;
+    }
+    const advice = this.incomeAdvice();
+    const lastTime = this.store.lastCandle()?.closeTime ?? null;
+    return {
+      direction: trend.direction,
+      confidence: trend.confidence,
+      score: trend.score,
+      headline: advice?.headline ?? (trend.direction === 'NEUTRAL' ? 'Standby — no dominant edge right now.' : 'Maintain bias, watch execution.'),
+      tone: advice?.tone ?? 'neutral',
+      rationale: advice?.rationale ?? null,
+      time: lastTime,
+    };
+  });
+  readonly groupedTrendFactors = computed(() => {
+    const details = this.store.trendDetails();
+    if (!details) {
+      return {
+        tailwinds: [] as TrendFactor[],
+        headwinds: [] as TrendFactor[],
+        neutral: [] as TrendFactor[],
+      };
+    }
+    const tailwinds = details.factors.filter((factor) => factor.direction === 'BULL');
+    const headwinds = details.factors.filter((factor) => factor.direction === 'BEAR');
+    const neutral = details.factors.filter((factor) => factor.direction === 'NEUTRAL');
+    return { tailwinds, headwinds, neutral };
+  });
   readonly latestNearMiss = computed(() => {
     const misses = this.store.nearMisses();
     return misses.length ? misses[misses.length - 1] : null;
@@ -611,113 +879,171 @@ export class AppComponent implements OnInit, OnDestroy {
       return null;
     }
 
-    const points = analytics.points;
-    const domainIndices = Math.max(points.length - 1, 1);
-    const xAt = (index: number) => (points.length === 1 ? 50 : (index / domainIndices) * 100);
-    const columnWidth = points.length ? 100 / points.length : 100;
-    const effectiveWidth = Math.min(12, Math.max(4, columnWidth * 0.6));
+    const rawPoints = analytics.points;
+    const allActuals = rawPoints.map((point) => point.actual);
+    const minActual = Math.min(0, ...allActuals);
+    const maxActual = Math.max(0, ...allActuals);
+    const maxAbsActual = Math.max(Math.abs(minActual), Math.abs(maxActual), 0.5);
+    const xMin = -maxAbsActual;
+    const xMax = maxAbsActual;
 
-    const marginTop = 8;
-    const lineHeight = 42;
-    const baselineY = marginTop + lineHeight;
-    const barMaxHeight = 24;
-    const xAxisY = baselineY + barMaxHeight + 4;
-
-    const allActuals = points.map((point) => point.actual);
-    const allCumulative = points.map((point) => point.cumulative);
-    let minValue = Math.min(0, ...allActuals, ...allCumulative);
-    let maxValue = Math.max(0, ...allActuals, ...allCumulative);
-    if (Math.abs(maxValue - minValue) < 1e-6) {
-      const pad = Math.max(Math.abs(maxValue) || 1, 1);
-      minValue -= pad / 2;
-      maxValue += pad / 2;
-    }
-    const range = maxValue - minValue || 1;
-    const yAt = (value: number) => {
-      const clamped = (value - minValue) / range;
-      return marginTop + (1 - clamped) * lineHeight;
+    const marginLeft = 12;
+    const marginRight = 10;
+    const marginTop = 12;
+    const marginBottom = 12;
+    const bounds = {
+      left: marginLeft,
+      right: 100 - marginRight,
+      top: marginTop,
+      bottom: 100 - marginBottom,
     };
+    const boundsWidth = bounds.right - bounds.left;
+    const boundsHeight = bounds.bottom - bounds.top;
+    const scaleX = (value: number) => {
+      if (xMax - xMin === 0) {
+        return bounds.left + boundsWidth / 2;
+      }
+      return bounds.left + ((value - xMin) / (xMax - xMin)) * boundsWidth;
+    };
+    const zeroX = scaleX(0);
 
-    const linePath = points
-      .map((point, index) => `${index === 0 ? 'M' : 'L'}${xAt(index).toFixed(3)},${yAt(point.cumulative).toFixed(3)}`)
-      .join(' ');
-
-    const zeroLine = yAt(0);
-    const areaPathParts: string[] = [];
-    const firstX = xAt(0).toFixed(3);
-    const lastX = xAt(points.length - 1).toFixed(3);
-    areaPathParts.push(`M${firstX},${zeroLine.toFixed(3)}`);
-    points.forEach((point, index) => {
-      areaPathParts.push(`L${xAt(index).toFixed(3)},${yAt(point.cumulative).toFixed(3)}`);
+    const laneHeight = 20;
+    const laneGap = 8;
+    const laneDefinitions = [
+      { expected: 1 as const, label: 'Long calls', tone: 'positive' as const },
+      { expected: 0 as const, label: 'Flat guidance', tone: 'neutral' as const },
+      { expected: -1 as const, label: 'Short calls', tone: 'negative' as const },
+    ];
+    const lanes = laneDefinitions.map((definition, index) => {
+      const bandY = marginTop + index * (laneHeight + laneGap);
+      const bandHeight = laneHeight;
+      const center = bandY + bandHeight / 2;
+      const labelX = Math.max(2, marginLeft - 4);
+      const labelY = Math.min(98, center + 1.8);
+      let alignmentRect: { x: number; width: number } | null = null;
+      if (definition.expected === 1) {
+        const width = Math.max(0, bounds.right - zeroX);
+        if (width > 0.5) {
+          alignmentRect = { x: zeroX, width };
+        }
+      } else if (definition.expected === -1) {
+        const width = Math.max(0, zeroX - bounds.left);
+        if (width > 0.5) {
+          alignmentRect = { x: bounds.left, width };
+        }
+      } else {
+        const tolerance = Math.max(0.2, maxAbsActual * 0.15);
+        const left = scaleX(-tolerance);
+        const right = scaleX(tolerance);
+        const width = Math.max(0, right - left);
+        if (width > 0.5) {
+          alignmentRect = { x: left, width };
+        }
+      }
+      return {
+        ...definition,
+        bandY,
+        bandHeight,
+        center,
+        labelX,
+        labelY,
+        alignmentRect,
+      };
     });
-    areaPathParts.push(`L${lastX},${zeroLine.toFixed(3)}`);
-    areaPathParts.push('Z');
-    const areaPath = areaPathParts.join(' ');
+    const laneMap = new Map(lanes.map((lane) => [lane.expected, lane]));
+    const laneCounters = new Map<number, number>();
 
-    const maxAbsActual = Math.max(...allActuals.map((value) => Math.abs(value)), 0.5);
-    const bars = points.map((point, index) => {
-      const center = points.length === 1 ? 50 : (index + 0.5) * columnWidth;
-      const width = effectiveWidth;
-      const x = Math.min(Math.max(0, center - width / 2), 100 - width);
-      const barMagnitude = (Math.abs(point.actual) / maxAbsActual) * barMaxHeight;
-      const height = Math.max(barMagnitude, 0.6);
-      const positive = point.actual >= 0;
-      const y = positive ? baselineY - height : baselineY;
+    const magnitudeRanking = rawPoints
+      .map((point, index) => ({ index, magnitude: Math.abs(point.actual) }))
+      .sort((a, b) => b.magnitude - a.magnitude)
+      .slice(0, Math.min(4, rawPoints.length))
+      .map((entry) => entry.index);
+    const labelledSet = new Set(magnitudeRanking);
+
+    const points = rawPoints.map((point, index) => {
+      const lane = laneMap.get(point.expected) ?? laneMap.get(0)!;
+      const laneCount = laneCounters.get(lane.expected) ?? 0;
+      laneCounters.set(lane.expected, laneCount + 1);
+      const jitter = ((laneCount % 3) - 1) * 2.4;
+      const y = Math.min(bounds.bottom - 2, Math.max(bounds.top + 2, lane.center + jitter));
+      const x = scaleX(point.actual);
+      const magnitudeRatio = Math.min(Math.abs(point.actual), maxAbsActual) / maxAbsActual;
+      const radius = 2.2 + magnitudeRatio * 4;
+      const aligned =
+        lane.expected === 1
+          ? point.actual > 0
+          : lane.expected === -1
+            ? point.actual < 0
+            : Math.abs(point.actual) <= Math.max(0.1, maxAbsActual * 0.05);
+      const showLabel = labelledSet.has(index);
+      const labelOffset = point.actual >= 0 ? 4 : -4;
+      const labelX = Math.min(bounds.right - 1, Math.max(bounds.left + 1, x + labelOffset));
+      const labelY = Math.max(bounds.top + 4, Math.min(bounds.bottom - 1, y - 3));
 
       return {
+        ...point,
         x,
         y,
-        width,
-        height,
-        center,
-        positive,
-        expected: point.expected,
-        time: point.time,
-        actual: point.actual,
-        outcome: point.outcome,
+        radius,
+        aligned,
+        showLabel,
+        labelX,
+        labelY,
       };
     });
 
-    const scatter = points.map((point, index) => ({
-      x: xAt(index),
-      y: yAt(point.cumulative),
-      outcome: point.outcome,
-      expected: point.expected,
-      actual: point.actual,
-      time: point.time,
-    }));
+    const wins = points.filter((point) => point.outcome === 'WIN').length;
+    const losses = points.filter((point) => point.outcome === 'LOSS').length;
+    const tradeCount = wins + losses;
+    const totalActual = points.reduce((acc, point) => acc + point.actual, 0);
+    const averageReturn = tradeCount ? totalActual / tradeCount : null;
+    const hitRate = tradeCount ? Math.round((wins / tradeCount) * 100) : null;
 
-    const tickCount = 5;
-    const yTicks = Array.from({ length: tickCount }, (_, idx) => {
-      const value = minValue + (range * idx) / (tickCount - 1);
+    const laneSummaries = lanes.map((lane) => {
+      const lanePoints = points.filter((point) => point.expected === lane.expected);
+      const laneWins = lanePoints.filter((point) => point.outcome === 'WIN').length;
+      const laneLosses = lanePoints.filter((point) => point.outcome === 'LOSS').length;
+      const lanePending = lanePoints.filter((point) => point.outcome === 'PENDING').length;
+      const laneAlignment =
+        lanePoints.length ? Math.round((lanePoints.filter((point) => point.aligned).length / lanePoints.length) * 100) : null;
+      const laneAverage = lanePoints.length
+        ? lanePoints.reduce((acc, point) => acc + point.actual, 0) / lanePoints.length
+        : null;
       return {
-        value,
-        y: yAt(value),
+        label: lane.label,
+        expected: lane.expected,
+        total: lanePoints.length,
+        wins: laneWins,
+        losses: laneLosses,
+        pending: lanePending,
+        alignmentRate: laneAlignment,
+        averageReturn: laneAverage,
       };
     });
 
-    const labelIndices = Array.from(
-      new Set([0, Math.floor(points.length / 2), points.length - 1].filter((idx) => idx >= 0)),
-    ).sort((a, b) => a - b);
-    const xLabels = labelIndices.map((index) => ({
-      x: points.length === 1 ? 50 : (index / domainIndices) * 100,
-      time: points[index]?.time ?? null,
-    }));
+    const ticks = Array.from({ length: 5 }, (_, idx) => {
+      const value = xMin + ((xMax - xMin) * idx) / 4;
+      return { value, x: scaleX(value) };
+    });
 
     return {
-      linePath,
-      areaPath,
-      scatter,
-      zeroLine,
-      bars,
-      minValue,
-      maxValue,
+      lanes,
+      points,
+      zeroX,
+      bounds: {
+        ...bounds,
+        width: boundsWidth,
+        height: boundsHeight,
+      },
+      ticks,
+      wins,
+      losses,
+      tradeCount,
+      hitRate,
+      averageReturn,
       totalReturn: analytics.totalReturn,
       correlation: analytics.correlation,
-      yTicks,
-      xLabels,
-      baselineY,
-      xAxisY,
+      laneSummaries,
     };
   });
 
@@ -756,6 +1082,65 @@ export class AppComponent implements OnInit, OnDestroy {
       return '∞';
     }
     return value >= 10 ? value.toFixed(1) : value.toFixed(2);
+  }
+
+  correlationDescriptor(value: number | null): string {
+    if (value === null) {
+      return 'Awaiting more closed trades';
+    }
+    if (value >= 0.65) {
+      return 'Strong alignment with reality';
+    }
+    if (value >= 0.35) {
+      return 'Moderate alignment';
+    }
+    if (value >= 0) {
+      return 'Light positive alignment';
+    }
+    if (value >= -0.35) {
+      return 'Slightly inverted';
+    }
+    return 'Inverted vs expectations';
+  }
+
+  predictionNarrative(
+    totalReturn: number,
+    hitRate: number | null,
+    correlation: number | null,
+    tradeCount: number,
+  ): string {
+    if (tradeCount === 0) {
+      return 'Once a few trades settle we will surface how signals are tracking live outcomes.';
+    }
+    const returnTone =
+      totalReturn > 0
+        ? 'Net gains show the confluence is adding edge.'
+        : totalReturn < 0
+          ? 'Drawdown indicates the model is trailing live price action.'
+          : 'Returns are flat versus expectations so far.';
+    let alignmentTone: string;
+    if (correlation === null) {
+      alignmentTone = 'Need additional closed trades to gauge alignment.';
+    } else if (correlation >= 0.65) {
+      alignmentTone = 'Alignment is strong, so the directional bias can be trusted.';
+    } else if (correlation >= 0.35) {
+      alignmentTone = 'Alignment is decent but still warrants confirmation.';
+    } else if (correlation >= 0) {
+      alignmentTone = 'Alignment is light — blend in discretionary context.';
+    } else {
+      alignmentTone = 'Signals are inverted right now — lean on defensive positioning.';
+    }
+    let hitRateTone = '';
+    if (hitRate !== null) {
+      if (hitRate >= 60) {
+        hitRateTone = ' Hit rate is solid and supports active follow-through.';
+      } else if (hitRate >= 45) {
+        hitRateTone = ' Hit rate sits near breakeven — be selective.';
+      } else {
+        hitRateTone = ' Hit rate is soft — focus on high conviction setups only.';
+      }
+    }
+    return `${returnTone} ${alignmentTone}${hitRateTone}`.trim();
   }
 
   factorIntensity(factor: TrendFactor): number {
