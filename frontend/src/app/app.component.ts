@@ -58,6 +58,13 @@ interface DashboardTile {
   accent: 'bull' | 'bear' | 'info' | 'warn' | 'neutral';
 }
 
+interface PredictionReviewWindow {
+  status: 'pending' | 'overdue' | 'completed';
+  dueTime: number | null;
+  evaluationTime: number | null;
+  horizonBars: number;
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
@@ -69,6 +76,187 @@ interface DashboardTile {
         <h1>BTC/USDT Directional Playbook</h1>
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
+
+      <section class="card control-hub">
+        <header class="control-hub-header">
+          <div>
+            <h2>Data Controls</h2>
+            <span class="control-hub-subtitle">Choose your market feed and refresh cadence.</span>
+          </div>
+          <span
+            class="trend-chip"
+            [class.trend-chip--bull]="store.trend() === 'BULL'"
+            [class.trend-chip--bear]="store.trend() === 'BEAR'"
+          >
+            Trend: {{ store.trend() }}
+          </span>
+        </header>
+        <div class="control-hub-body">
+          <div class="control-hub-actions">
+            <label class="control-field">
+              <span class="control-field-label">Provider</span>
+              <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
+                <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
+              </select>
+            </label>
+            <label class="control-field">
+              <span class="control-field-label">Interval</span>
+              <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
+                <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
+              </select>
+            </label>
+            <div class="control-hub-buttons">
+              <button type="button" (click)="reload()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Reload now' }}</button>
+              <button type="button" (click)="toggleAuto()">{{ auto() ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
+            </div>
+          </div>
+          <div class="control-hub-meta">
+            <div class="control-stat">
+              <span class="control-stat-label">Auto mode</span>
+              <span class="control-stat-value">{{ auto() ? 'Enabled · 30s' : 'Manual' }}</span>
+            </div>
+            <div
+              class="control-stat"
+              *ngIf="predictionReviewWindow() as review"
+              [class.control-stat--alert]="review.status === 'overdue'"
+            >
+              <span class="control-stat-label">Review window</span>
+              <span class="control-stat-value" [ngSwitch]="review.status">
+                <ng-container *ngSwitchCase="'pending'">
+                  {{ review.dueTime | date: 'HH:mm' }} · {{ formatCountdown(review.dueTime) }}
+                </ng-container>
+                <ng-container *ngSwitchCase="'overdue'">
+                  Overdue · {{ formatCountdown(review.dueTime) }}
+                </ng-container>
+                <ng-container *ngSwitchDefault>
+                  Reviewed {{ review.evaluationTime ? (review.evaluationTime | date: 'HH:mm') : 'n/a' }}
+                </ng-container>
+              </span>
+              <span class="control-stat-note">Horizon {{ review.horizonBars }} bars</span>
+            </div>
+            <div class="control-stat" *ngIf="store.lastUpdated() as updated">
+              <span class="control-stat-label">Last refresh</span>
+              <span class="control-stat-value">{{ updated | date: 'HH:mm:ss' }}</span>
+            </div>
+            <div class="control-stat" *ngIf="store.lastCandle() as last">
+              <span class="control-stat-label">Last {{ intervalValue }} close</span>
+              <span class="control-stat-value">{{ last.closeTime | date: 'MMM d · HH:mm' }}</span>
+            </div>
+            <div class="control-stat">
+              <span class="control-stat-label">Feed</span>
+              <span class="control-stat-value">{{ providerLabel() }}</span>
+            </div>
+          </div>
+        </div>
+        <div class="control-hub-status status-grid">
+          <article class="status-card danger" *ngIf="error() as message">
+            <h3>Data Error</h3>
+            <p>{{ message }}</p>
+          </article>
+
+          <article class="status-card muted" *ngIf="!error() && loading()">
+            <h3>Syncing</h3>
+            <p>Fetching latest candles…</p>
+          </article>
+
+          <article class="status-card accent" *ngIf="!loading() && store.latestSignal() as signal">
+            <h3>Latest Signal</h3>
+            <p>
+              <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
+              @ {{ signal.price | number: '1.0-0' }}
+            </p>
+            <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+          </article>
+
+          <article class="status-card highlight" *ngIf="!loading() && store.latestSignal() as decision">
+            <h3>Last Decision</h3>
+            <p>
+              <span class="pill" [class.long-pill]="decision.type === 'LONG'" [class.short-pill]="decision.type === 'SHORT'">{{ decision.type }}</span>
+              decided {{ decision.time | date: 'yyyy-MM-dd HH:mm' }}
+            </p>
+            <p class="signal-reason">{{ decision.reason }}</p>
+            <ng-container *ngIf="store.latestValidation() as validation">
+              <p>
+                Outcome
+                <span class="outcome-pill" [class.outcome-win]="validation.outcome === 'WIN'" [class.outcome-loss]="validation.outcome === 'LOSS'" [class.outcome-pending]="validation.outcome === 'PENDING'">
+                  {{ validation.outcome }}
+                </span>
+                <span *ngIf="validation.directionChangePct !== null">
+                  — {{ formatChange(validation.directionChangePct) }} after {{ validation.actualHorizon ?? validation.horizonCandles }} bars
+                </span>
+              </p>
+              <p *ngIf="validation.evaluationTime">
+                Checked at {{ validation.evaluationTime | date: 'yyyy-MM-dd HH:mm' }}
+              </p>
+            </ng-container>
+            <p *ngIf="!store.latestValidation()">Outcome validation pending.</p>
+          </article>
+
+          <article class="status-card" *ngIf="!loading() && store.latestFastSignal() as fast">
+            <h3>Momentum Ping</h3>
+            <p>
+              <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
+              @ {{ fast.price | number: '1.0-0' }}
+            </p>
+            <time>{{ fast.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+          </article>
+
+          <article class="status-card" *ngIf="!loading() && !error() && store.lastCandle() as last">
+            <h3>Market Clock</h3>
+            <p>Last {{ intervalValue }} candle closed {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}</p>
+            <p *ngIf="store.lastUpdated() as updated">Refreshed {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
+            <span class="meta">Source: {{ providerLabel() }}</span>
+          </article>
+
+          <article class="status-card warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
+            <h3>Awaiting Confirmation</h3>
+            <p>No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}</p>
+          </article>
+
+          <article class="status-card" *ngIf="!loading() && !error() && latestNearMiss() as near">
+            <h3>Closest Setup</h3>
+            <p>{{ near.bias }} bias pending {{ near.missing.join(', ') }}</p>
+            <time>{{ near.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+          </article>
+
+          <article class="status-card" *ngIf="!loading() && !error() && store.validationSummary() as summary">
+            <h3>Decision Scorecard</h3>
+            <p>Win rate: {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}</p>
+            <p>Wins / Losses / Pending: {{ summary.wins }} / {{ summary.losses }} / {{ summary.pending }}</p>
+            <p *ngIf="summary.lastOutcome">
+              Last outcome
+              <span class="outcome-pill" [class.outcome-win]="summary.lastOutcome === 'WIN'" [class.outcome-loss]="summary.lastOutcome === 'LOSS'" [class.outcome-pending]="summary.lastOutcome === 'PENDING'">
+                {{ summary.lastOutcome }}
+              </span>
+              <span *ngIf="summary.lastChangePct !== null">
+                ({{ formatChange(summary.lastChangePct) }})
+              </span>
+            </p>
+          </article>
+
+          <article class="status-card health-card" *ngIf="!loading() && !error() && store.strategyHealth() as health">
+            <h3>Strategy Health</h3>
+            <div class="health-metrics">
+              <div>
+                <span class="metric-label">Expectancy</span>
+                <span class="metric-value">{{ formatChange(health.expectancy) }}</span>
+              </div>
+              <div>
+                <span class="metric-label">Profit Factor</span>
+                <span class="metric-value">{{ formatProfitFactor(health.profitFactor) }}</span>
+              </div>
+              <div>
+                <span class="metric-label">Max Drawdown</span>
+                <span class="metric-value drawdown">{{ formatChange(health.maxDrawdown) }}</span>
+              </div>
+            </div>
+            <p class="health-summary">
+              Avg win {{ formatChange(health.averageGain) }} · Avg loss {{ formatChange(health.averageLoss) }} · Win streak {{ health.bestWinStreak }} / Loss streak
+              {{ health.bestLossStreak }}
+            </p>
+          </article>
+        </div>
+      </section>
 
       <ng-container *ngIf="snapshotTiles() as tiles">
         <section class="insight-strip" *ngIf="tiles.length">
@@ -391,143 +579,6 @@ interface DashboardTile {
       </section>
 
       <div class="layout-grid">
-        <section class="card controls">
-          <header class="card-heading">
-            <h2>Data Controls</h2>
-            <span class="card-subtitle">Choose your market feed and refresh cadence.</span>
-          </header>
-          <div class="card-body">
-            <div class="control-row">
-              <label>
-                Provider
-                <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
-                  <option *ngFor="let provider of providers" [value]="provider.id">{{ provider.label }}</option>
-                </select>
-              </label>
-              <label>
-                Interval
-                <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
-                  <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
-                </select>
-              </label>
-              <button type="button" (click)="reload()" [disabled]="loading()">{{ loading() ? 'Loading…' : 'Reload now' }}</button>
-              <button type="button" (click)="toggleAuto()">{{ auto() ? 'Stop auto (30s)' : 'Auto refresh (30s)' }}</button>
-              <span class="trend" [class.bullish]="store.trend() === 'BULL'" [class.bearish]="store.trend() === 'BEAR'">
-                Trend: {{ store.trend() }}
-              </span>
-            </div>
-
-            <div class="status-grid">
-              <article class="status-card danger" *ngIf="error() as message">
-                <h3>Data Error</h3>
-                <p>{{ message }}</p>
-              </article>
-
-              <article class="status-card muted" *ngIf="!error() && loading()">
-                <h3>Syncing</h3>
-                <p>Fetching latest candles…</p>
-              </article>
-
-              <article class="status-card accent" *ngIf="!loading() && store.latestSignal() as signal">
-                <h3>Latest Signal</h3>
-                <p>
-                  <span class="pill" [class.long-pill]="signal.type === 'LONG'" [class.short-pill]="signal.type === 'SHORT'">{{ signal.type }}</span>
-                  @ {{ signal.price | number: '1.0-0' }}
-                </p>
-                <time>{{ signal.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-              </article>
-
-              <article class="status-card highlight" *ngIf="!loading() && store.latestSignal() as decision">
-                <h3>Last Decision</h3>
-                <p>
-                  <span class="pill" [class.long-pill]="decision.type === 'LONG'" [class.short-pill]="decision.type === 'SHORT'">{{ decision.type }}</span>
-                  decided {{ decision.time | date: 'yyyy-MM-dd HH:mm' }}
-                </p>
-                <p class="signal-reason">{{ decision.reason }}</p>
-                <ng-container *ngIf="store.latestValidation() as validation">
-                  <p>
-                    Outcome
-                    <span class="outcome-pill" [class.outcome-win]="validation.outcome === 'WIN'" [class.outcome-loss]="validation.outcome === 'LOSS'" [class.outcome-pending]="validation.outcome === 'PENDING'">
-                      {{ validation.outcome }}
-                    </span>
-                    <span *ngIf="validation.directionChangePct !== null">
-                      — {{ formatChange(validation.directionChangePct) }} after {{ validation.actualHorizon ?? validation.horizonCandles }} bars
-                    </span>
-                  </p>
-                  <p *ngIf="validation.evaluationTime">
-                    Checked at {{ validation.evaluationTime | date: 'yyyy-MM-dd HH:mm' }}
-                  </p>
-                </ng-container>
-                <p *ngIf="!store.latestValidation()">Outcome validation pending.</p>
-              </article>
-
-              <article class="status-card" *ngIf="!loading() && store.latestFastSignal() as fast">
-                <h3>Momentum Ping</h3>
-                <p>
-                  <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
-                  @ {{ fast.price | number: '1.0-0' }}
-                </p>
-                <time>{{ fast.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-              </article>
-
-              <article class="status-card" *ngIf="!loading() && !error() && store.lastCandle() as last">
-                <h3>Market Clock</h3>
-                <p>Last {{ intervalValue }} candle closed {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}</p>
-                <p *ngIf="store.lastUpdated() as updated">Refreshed {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
-                <span class="meta">Source: {{ providerLabel() }}</span>
-              </article>
-
-              <article class="status-card warning" *ngIf="!loading() && !error() && staleSignal() && store.latestSignal()">
-                <h3>Awaiting Confirmation</h3>
-                <p>No new signals since {{ store.latestSignal()?.time | date: 'yyyy-MM-dd HH:mm' }}</p>
-              </article>
-
-              <article class="status-card" *ngIf="!loading() && !error() && latestNearMiss() as near">
-                <h3>Closest Setup</h3>
-                <p>{{ near.bias }} bias pending {{ near.missing.join(', ') }}</p>
-                <time>{{ near.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-              </article>
-
-              <article class="status-card" *ngIf="!loading() && !error() && store.validationSummary() as summary">
-                <h3>Decision Scorecard</h3>
-                <p>Win rate: {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}</p>
-                <p>Wins / Losses / Pending: {{ summary.wins }} / {{ summary.losses }} / {{ summary.pending }}</p>
-                <p *ngIf="summary.lastOutcome">
-                  Last outcome
-                  <span class="outcome-pill" [class.outcome-win]="summary.lastOutcome === 'WIN'" [class.outcome-loss]="summary.lastOutcome === 'LOSS'" [class.outcome-pending]="summary.lastOutcome === 'PENDING'">
-                    {{ summary.lastOutcome }}
-                  </span>
-                  <span *ngIf="summary.lastChangePct !== null">
-                    ({{ formatChange(summary.lastChangePct) }})
-                  </span>
-                </p>
-              </article>
-
-              <article class="status-card health-card" *ngIf="!loading() && !error() && store.strategyHealth() as health">
-                <h3>Strategy Health</h3>
-                <div class="health-metrics">
-                  <div>
-                    <span class="metric-label">Expectancy</span>
-                    <span class="metric-value">{{ formatChange(health.expectancy) }}</span>
-                  </div>
-                  <div>
-                    <span class="metric-label">Profit Factor</span>
-                    <span class="metric-value">{{ formatProfitFactor(health.profitFactor) }}</span>
-                  </div>
-                  <div>
-                    <span class="metric-label">Max Drawdown</span>
-                    <span class="metric-value drawdown">{{ formatChange(health.maxDrawdown) }}</span>
-                  </div>
-                </div>
-                <p class="health-summary">
-                  Avg win {{ formatChange(health.averageGain) }} · Avg loss {{ formatChange(health.averageLoss) }} · Win streak {{ health.bestWinStreak }} / Loss streak
-                  {{ health.bestLossStreak }}
-                </p>
-              </article>
-            </div>
-          </div>
-        </section>
-
         <section class="card insights" *ngIf="store.trendDetails() as trendDetails">
           <header class="card-heading card-heading--split">
             <div>
@@ -1095,6 +1146,39 @@ export class AppComponent implements OnInit, OnDestroy {
     }
     return validations[validations.length - 1].horizonCandles;
   });
+  readonly predictionReviewWindow = computed<PredictionReviewWindow | null>(() => {
+    const validations = this.store.decisionValidations();
+    if (!validations.length) {
+      return null;
+    }
+
+    const latest = validations[validations.length - 1];
+    if (!Number.isFinite(latest.signalTime)) {
+      return null;
+    }
+
+    const horizonCandidate = (latest.actualHorizon ?? latest.horizonCandles) ?? latest.horizonCandles;
+    const horizonBars = typeof horizonCandidate === 'number' ? horizonCandidate : latest.horizonCandles;
+    const intervalMs = this.intervalToMs(this.intervalSignal());
+    const dueTime =
+      Number.isFinite(horizonBars)
+        ? latest.signalTime + horizonBars * intervalMs
+        : null;
+    const evaluationTime = latest.evaluationTime;
+    const now = Date.now();
+
+    let status: PredictionReviewWindow['status'] = 'completed';
+    if (latest.outcome === 'PENDING') {
+      status = dueTime !== null && now > dueTime ? 'overdue' : 'pending';
+    }
+
+    return {
+      status,
+      dueTime,
+      evaluationTime,
+      horizonBars,
+    };
+  });
   readonly predictionChart = computed(() => {
     const analytics = this.store.validationAnalytics();
     if (!analytics || !analytics.points.length) {
@@ -1623,6 +1707,36 @@ export class AppComponent implements OnInit, OnDestroy {
       return '∞';
     }
     return value >= 10 ? value.toFixed(1) : value.toFixed(2);
+  }
+
+  formatCountdown(targetTime: number | null): string {
+    if (targetTime === null || !Number.isFinite(targetTime)) {
+      return 'n/a';
+    }
+    const diff = targetTime - Date.now();
+    const absDiff = Math.abs(diff);
+    const minuteMs = 60_000;
+    const hourMs = 60 * minuteMs;
+
+    if (absDiff < minuteMs) {
+      return diff >= 0 ? 'in <1m' : '<1m late';
+    }
+
+    const hours = Math.floor(absDiff / hourMs);
+    const minutes = Math.floor((absDiff % hourMs) / minuteMs);
+    const parts: string[] = [];
+    if (hours > 0) {
+      parts.push(`${hours}h`);
+    }
+    if (minutes > 0) {
+      parts.push(`${minutes}m`);
+    }
+    if (!parts.length) {
+      parts.push('<1m');
+    }
+
+    const phrase = parts.join(' ');
+    return diff >= 0 ? `in ${phrase}` : `${phrase} late`;
   }
 
   correlationDescriptor(value: number | null): string {
