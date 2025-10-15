@@ -2,6 +2,21 @@ import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, effect
 import { take } from 'rxjs/operators';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { NgApexchartsModule } from 'ng-apexcharts';
+import type {
+  ApexAnnotations,
+  ApexAxisChartSeries,
+  ApexChart,
+  ApexDataLabels,
+  ApexFill,
+  ApexGrid,
+  ApexLegend,
+  ApexMarkers,
+  ApexStroke,
+  ApexTooltip,
+  ApexXAxis,
+  ApexYAxis,
+} from 'ng-apexcharts';
 
 import { SignalsStore } from './store/signals.store';
 import { Interval } from './models/candle.model';
@@ -17,10 +32,27 @@ interface ProviderOption {
   symbol: string;
 }
 
+type ExpectedLane = 1 | 0 | -1;
+
+interface QuadrantChartPoint {
+  x: number;
+  y: ExpectedLane;
+  fillColor: string;
+  strokeColor: string;
+  meta: {
+    outcome: 'WIN' | 'LOSS' | 'PENDING';
+    expected: ExpectedLane;
+    actual: number;
+    aligned: boolean;
+    time: number;
+    label: string | null;
+  };
+}
+
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, NgApexchartsModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <main class="app">
@@ -142,37 +174,20 @@ interface ProviderOption {
         </header>
         <div class="card-body news-history-body">
           <div class="news-history-chart">
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <rect class="chart-panel" x="0" y="0" width="100" height="100"></rect>
-              <g class="chart-grid">
-                <ng-container *ngFor="let tick of series.yTicks">
-                  <line class="chart-grid-line" x1="0" [attr.y1]="tick.y" x2="100" [attr.y2]="tick.y"></line>
-                  <text class="chart-tick-label" x="2" [attr.y]="tick.y - 1">{{ formatChange(tick.value) }}</text>
-                </ng-container>
-              </g>
-              <path class="news-predicted-line" [attr.d]="series.predictedPath"></path>
-              <path *ngIf="series.actualPath" class="news-actual-line" [attr.d]="series.actualPath"></path>
-              <line class="news-zero-line" x1="0" [attr.y1]="series.zeroLine" x2="100" [attr.y2]="series.zeroLine"></line>
-              <g class="news-points">
-                <ng-container *ngFor="let point of series.points">
-                  <circle class="predicted-point" [attr.cx]="point.x" [attr.cy]="point.predictedY" r="1.6"></circle>
-                  <circle
-                    *ngIf="point.actualY !== null"
-                    class="actual-point"
-                    [class.actual-hit]="point.outcome === 'HIT'"
-                    [class.actual-miss]="point.outcome === 'MISS'"
-                    [attr.cx]="point.x"
-                    [attr.cy]="point.actualY"
-                    r="1.9"
-                  ></circle>
-                </ng-container>
-              </g>
-              <g class="chart-x-labels">
-                <ng-container *ngFor="let label of series.xLabels">
-                  <text class="chart-x-label" [attr.x]="label.x" [attr.y]="series.zeroLine + 12">{{ label.time | date: 'MM-dd' }}</text>
-                </ng-container>
-              </g>
-            </svg>
+            <apx-chart
+              [series]="series.chartSeries"
+              [chart]="series.chartOptions.chart"
+              [xaxis]="series.chartOptions.xaxis"
+              [yaxis]="series.chartOptions.yaxis"
+              [stroke]="series.chartOptions.stroke"
+              [markers]="series.chartOptions.markers"
+              [dataLabels]="series.chartOptions.dataLabels"
+              [grid]="series.chartOptions.grid"
+              [tooltip]="series.chartOptions.tooltip"
+              [annotations]="series.chartOptions.annotations"
+              [legend]="series.chartOptions.legend"
+              [colors]="series.chartOptions.colors"
+            ></apx-chart>
           </div>
           <div class="news-history-metrics">
             <div>
@@ -203,16 +218,16 @@ interface ProviderOption {
           </div>
           <div class="chart-legend">
             <span class="chart-legend-item">
-              <span class="legend-swatch legend-swatch--line"></span>
-              Cumulative return
-            </span>
-            <span class="chart-legend-item">
               <span class="legend-swatch legend-swatch--win"></span>
               Winning trade
             </span>
             <span class="chart-legend-item">
               <span class="legend-swatch legend-swatch--loss"></span>
               Losing trade
+            </span>
+            <span class="chart-legend-item">
+              <span class="legend-swatch legend-swatch--pending"></span>
+              Neutral outcome
             </span>
           </div>
         </header>
@@ -244,79 +259,22 @@ interface ProviderOption {
             </p>
           </div>
           <div class="prediction-chart outcome-quadrant">
-            <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <rect class="chart-panel" x="0" y="0" width="100" height="100"></rect>
-              <g class="quadrant-lanes">
-                <ng-container *ngFor="let lane of chart.lanes">
-                  <rect
-                    class="lane-band"
-                    [class.lane-positive]="lane.expected === 1"
-                    [class.lane-negative]="lane.expected === -1"
-                    [class.lane-neutral]="lane.expected === 0"
-                    [attr.x]="chart.bounds.left"
-                    [attr.y]="lane.bandY"
-                    [attr.width]="chart.bounds.width"
-                    [attr.height]="lane.bandHeight"
-                  ></rect>
-                  <rect
-                    class="lane-alignment"
-                    *ngIf="lane.alignmentRect"
-                    [attr.x]="lane.alignmentRect.x"
-                    [attr.y]="lane.bandY"
-                    [attr.width]="lane.alignmentRect.width"
-                    [attr.height]="lane.bandHeight"
-                  ></rect>
-                  <text class="lane-label" [attr.x]="lane.labelX" [attr.y]="lane.labelY">
-                    {{ lane.label }}
-                  </text>
-                </ng-container>
-              </g>
-              <line
-                class="quadrant-axis"
-                [attr.x1]="chart.zeroX"
-                [attr.y1]="chart.bounds.top"
-                [attr.x2]="chart.zeroX"
-                [attr.y2]="chart.bounds.bottom"
-              ></line>
-              <g class="quadrant-ticks">
-                <ng-container *ngFor="let tick of chart.ticks">
-                  <line
-                    class="quadrant-tick"
-                    [attr.x1]="tick.x"
-                    [attr.x2]="tick.x"
-                    [attr.y1]="chart.bounds.top"
-                    [attr.y2]="chart.bounds.bottom"
-                  ></line>
-                  <text class="quadrant-tick-label" [attr.x]="tick.x" [attr.y]="chart.bounds.bottom + 6">
-                    {{ formatChange(tick.value) }}
-                  </text>
-                </ng-container>
-              </g>
-              <g class="quadrant-points">
-                <g
-                  *ngFor="let point of chart.points"
-                  class="quadrant-point"
-                  [class.point-win]="point.outcome === 'WIN'"
-                  [class.point-loss]="point.outcome === 'LOSS'"
-                  [class.point-pending]="point.outcome === 'PENDING'"
-                  [class.point-aligned]="point.aligned"
-                >
-                  <circle [attr.cx]="point.x" [attr.cy]="point.y" [attr.r]="point.radius"></circle>
-                  <text
-                    *ngIf="point.showLabel"
-                    class="quadrant-point-label"
-                    [attr.x]="point.labelX"
-                    [attr.y]="point.labelY"
-                  >
-                    {{ formatChange(point.actual) }}
-                  </text>
-                  <title>
-                    {{ point.outcome }} {{ formatChange(point.actual) }} ({{ point.expected === 1 ? 'LONG' : point.expected === -1 ? 'SHORT' : 'FLAT' }})
-                    · {{ point.time | date: 'yyyy-MM-dd HH:mm' }}
-                  </title>
-                </g>
-              </g>
-            </svg>
+            <div class="quadrant-chart">
+              <apx-chart
+                [series]="chart.quadrantSeries"
+                [chart]="chart.quadrantOptions.chart"
+                [xaxis]="chart.quadrantOptions.xaxis"
+                [yaxis]="chart.quadrantOptions.yaxis"
+                [markers]="chart.quadrantOptions.markers"
+                [dataLabels]="chart.quadrantOptions.dataLabels"
+                [grid]="chart.quadrantOptions.grid"
+                [tooltip]="chart.quadrantOptions.tooltip"
+                [annotations]="chart.quadrantOptions.annotations"
+                [fill]="chart.quadrantOptions.fill"
+                [stroke]="chart.quadrantOptions.stroke"
+                [legend]="chart.quadrantOptions.legend"
+              ></apx-chart>
+            </div>
             <div class="lane-summaries">
               <article class="lane-card" *ngFor="let lane of chart.laneSummaries">
                 <header>
@@ -1000,78 +958,16 @@ export class AppComponent implements OnInit, OnDestroy {
     }
 
     const rawPoints = analytics.points;
-    const allActuals = rawPoints.map((point) => point.actual);
-    const minActual = Math.min(0, ...allActuals);
-    const maxActual = Math.max(0, ...allActuals);
-    const maxAbsActual = Math.max(Math.abs(minActual), Math.abs(maxActual), 0.5);
-    const xMin = -maxAbsActual;
-    const xMax = maxAbsActual;
+    const wins = rawPoints.filter((point) => point.outcome === 'WIN').length;
+    const losses = rawPoints.filter((point) => point.outcome === 'LOSS').length;
+    const tradeCount = wins + losses;
+    const totalActual = rawPoints.reduce((acc, point) => acc + point.actual, 0);
+    const averageReturn = tradeCount ? totalActual / tradeCount : null;
+    const hitRate = tradeCount ? Math.round((wins / tradeCount) * 100) : null;
 
-    const marginLeft = 12;
-    const marginRight = 10;
-    const marginTop = 12;
-    const marginBottom = 12;
-    const bounds = {
-      left: marginLeft,
-      right: 100 - marginRight,
-      top: marginTop,
-      bottom: 100 - marginBottom,
-    };
-    const boundsWidth = bounds.right - bounds.left;
-    const boundsHeight = bounds.bottom - bounds.top;
-    const scaleX = (value: number) => {
-      if (xMax - xMin === 0) {
-        return bounds.left + boundsWidth / 2;
-      }
-      return bounds.left + ((value - xMin) / (xMax - xMin)) * boundsWidth;
-    };
-    const zeroX = scaleX(0);
-
-    const laneHeight = 20;
-    const laneGap = 8;
-    const laneDefinitions = [
-      { expected: 1 as const, label: 'Long calls', tone: 'positive' as const },
-      { expected: 0 as const, label: 'Flat guidance', tone: 'neutral' as const },
-      { expected: -1 as const, label: 'Short calls', tone: 'negative' as const },
-    ];
-    const lanes = laneDefinitions.map((definition, index) => {
-      const bandY = marginTop + index * (laneHeight + laneGap);
-      const bandHeight = laneHeight;
-      const center = bandY + bandHeight / 2;
-      const labelX = Math.max(2, marginLeft - 4);
-      const labelY = Math.min(98, center + 1.8);
-      let alignmentRect: { x: number; width: number } | null = null;
-      if (definition.expected === 1) {
-        const width = Math.max(0, bounds.right - zeroX);
-        if (width > 0.5) {
-          alignmentRect = { x: zeroX, width };
-        }
-      } else if (definition.expected === -1) {
-        const width = Math.max(0, zeroX - bounds.left);
-        if (width > 0.5) {
-          alignmentRect = { x: bounds.left, width };
-        }
-      } else {
-        const tolerance = Math.max(0.2, maxAbsActual * 0.15);
-        const left = scaleX(-tolerance);
-        const right = scaleX(tolerance);
-        const width = Math.max(0, right - left);
-        if (width > 0.5) {
-          alignmentRect = { x: left, width };
-        }
-      }
-      return {
-        ...definition,
-        bandY,
-        bandHeight,
-        center,
-        labelX,
-        labelY,
-        alignmentRect,
-      };
-    });
-    const laneMap = new Map(lanes.map((lane) => [lane.expected, lane]));
-    const laneCounters = new Map<number, number>();
+    const maxAbsActual = Math.max(...rawPoints.map((point) => Math.abs(point.actual)), 0.5);
+    const xPadding = Math.max(0.5, maxAbsActual * 0.15);
+    const tolerance = Math.max(0.2, maxAbsActual * 0.15);
 
     const magnitudeRanking = rawPoints
       .map((point, index) => ({ index, magnitude: Math.abs(point.actual) }))
@@ -1080,55 +976,49 @@ export class AppComponent implements OnInit, OnDestroy {
       .map((entry) => entry.index);
     const labelledSet = new Set(magnitudeRanking);
 
-    const points = rawPoints.map((point, index) => {
-      const lane = laneMap.get(point.expected) ?? laneMap.get(0)!;
-      const laneCount = laneCounters.get(lane.expected) ?? 0;
-      laneCounters.set(lane.expected, laneCount + 1);
-      const jitter = ((laneCount % 3) - 1) * 2.4;
-      const y = Math.min(bounds.bottom - 2, Math.max(bounds.top + 2, lane.center + jitter));
-      const x = scaleX(point.actual);
-      const magnitudeRatio = Math.min(Math.abs(point.actual), maxAbsActual) / maxAbsActual;
-      const radius = 2.2 + magnitudeRatio * 4;
+    const scatterPoints: QuadrantChartPoint[] = rawPoints.map((point, index) => {
+      const expected = (point.expected ?? 0) as ExpectedLane;
+      const actual = Number(point.actual.toFixed(2));
+      const outcome = point.outcome;
       const aligned =
-        lane.expected === 1
-          ? point.actual > 0
-          : lane.expected === -1
-            ? point.actual < 0
-            : Math.abs(point.actual) <= Math.max(0.1, maxAbsActual * 0.05);
-      const showLabel = labelledSet.has(index);
-      const labelOffset = point.actual >= 0 ? 4 : -4;
-      const labelX = Math.min(bounds.right - 1, Math.max(bounds.left + 1, x + labelOffset));
-      const labelY = Math.max(bounds.top + 4, Math.min(bounds.bottom - 1, y - 3));
+        expected === 1 ? actual > 0 : expected === -1 ? actual < 0 : Math.abs(actual) <= tolerance;
+      const fillColor = outcome === 'WIN' ? '#22c55e' : outcome === 'LOSS' ? '#f87171' : '#94a3b8';
+      const strokeColor = aligned ? '#38bdf8' : '#0f172a';
 
       return {
-        ...point,
-        x,
-        y,
-        radius,
-        aligned,
-        showLabel,
-        labelX,
-        labelY,
+        x: actual,
+        y: expected,
+        fillColor,
+        strokeColor,
+        meta: {
+          outcome,
+          expected,
+          actual,
+          aligned,
+          time: point.time,
+          label: labelledSet.has(index) ? this.formatChange(actual) : null,
+        },
       };
     });
 
-    const wins = points.filter((point) => point.outcome === 'WIN').length;
-    const losses = points.filter((point) => point.outcome === 'LOSS').length;
-    const tradeCount = wins + losses;
-    const totalActual = points.reduce((acc, point) => acc + point.actual, 0);
-    const averageReturn = tradeCount ? totalActual / tradeCount : null;
-    const hitRate = tradeCount ? Math.round((wins / tradeCount) * 100) : null;
+    const laneDefinitions = [
+      { expected: 1 as ExpectedLane, label: 'Long calls' },
+      { expected: 0 as ExpectedLane, label: 'Flat guidance' },
+      { expected: -1 as ExpectedLane, label: 'Short calls' },
+    ];
 
-    const laneSummaries = lanes.map((lane) => {
-      const lanePoints = points.filter((point) => point.expected === lane.expected);
-      const laneWins = lanePoints.filter((point) => point.outcome === 'WIN').length;
-      const laneLosses = lanePoints.filter((point) => point.outcome === 'LOSS').length;
-      const lanePending = lanePoints.filter((point) => point.outcome === 'PENDING').length;
-      const laneAlignment =
-        lanePoints.length ? Math.round((lanePoints.filter((point) => point.aligned).length / lanePoints.length) * 100) : null;
-      const laneAverage = lanePoints.length
-        ? lanePoints.reduce((acc, point) => acc + point.actual, 0) / lanePoints.length
+    const laneSummaries = laneDefinitions.map((lane) => {
+      const lanePoints = scatterPoints.filter((point) => point.meta.expected === lane.expected);
+      const laneWins = lanePoints.filter((point) => point.meta.outcome === 'WIN').length;
+      const laneLosses = lanePoints.filter((point) => point.meta.outcome === 'LOSS').length;
+      const lanePending = lanePoints.length - laneWins - laneLosses;
+      const laneAlignment = lanePoints.length
+        ? Math.round((lanePoints.filter((point) => point.meta.aligned).length / lanePoints.length) * 100)
         : null;
+      const laneAverage = lanePoints.length
+        ? lanePoints.reduce((acc, point) => acc + point.meta.actual, 0) / lanePoints.length
+        : null;
+
       return {
         label: lane.label,
         expected: lane.expected,
@@ -1141,21 +1031,211 @@ export class AppComponent implements OnInit, OnDestroy {
       };
     });
 
-    const ticks = Array.from({ length: 5 }, (_, idx) => {
-      const value = xMin + ((xMax - xMin) * idx) / 4;
-      return { value, x: scaleX(value) };
-    });
+    const yAxis: ApexYAxis = {
+      min: -1.4,
+      max: 1.4,
+      tickAmount: 3,
+      labels: {
+        formatter: (value: number) => {
+          if (value > 0.5) {
+            return 'Long calls';
+          }
+          if (value < -0.5) {
+            return 'Short calls';
+          }
+          return 'Flat guidance';
+        },
+        style: {
+          colors: '#94a3b8',
+        },
+      },
+      axisTicks: {
+        show: false,
+      },
+      axisBorder: {
+        show: false,
+      },
+    };
+
+    const xAxis: ApexXAxis = {
+      min: -(maxAbsActual + xPadding),
+      max: maxAbsActual + xPadding,
+      tickAmount: 5,
+      labels: {
+        formatter: (value: string) => {
+          const numeric = Number.parseFloat(value);
+          return Number.isFinite(numeric) ? this.formatChange(numeric) : value;
+        },
+        style: {
+          colors: '#94a3b8',
+        },
+      },
+      axisBorder: {
+        color: 'rgba(148,163,184,0.28)',
+      },
+      axisTicks: {
+        color: 'rgba(148,163,184,0.28)',
+      },
+      title: {
+        text: 'Realised move (%)',
+        style: {
+          color: '#cbd5f5',
+        },
+      },
+      crosshairs: {
+        show: false,
+      },
+    };
+
+    const annotations: ApexAnnotations = {
+      xaxis: [
+        {
+          x: 0,
+          borderColor: 'rgba(148,163,184,0.4)',
+          strokeDashArray: 4,
+        },
+      ],
+      yaxis: laneDefinitions.map((lane) => ({
+        y: lane.expected - 0.45,
+        y2: lane.expected + 0.45,
+        fillColor:
+          lane.expected === 1
+            ? 'rgba(34,197,94,0.12)'
+            : lane.expected === -1
+              ? 'rgba(248,113,113,0.12)'
+              : 'rgba(148,163,184,0.12)',
+        borderColor: 'transparent',
+      })),
+    };
+
+    const discreteMarkers = scatterPoints.map((point, index) => ({
+      seriesIndex: 0,
+      dataPointIndex: index,
+      size: point.meta.aligned ? 11 : 9,
+      fillColor: point.fillColor,
+      strokeColor: point.strokeColor,
+      strokeWidth: point.meta.aligned ? 3 : 2,
+    }));
+
+    const markers: ApexMarkers = {
+      size: 9,
+      strokeColors: '#0f172a',
+      strokeWidth: 2,
+      discrete: discreteMarkers,
+      hover: {
+        sizeOffset: 3,
+      },
+    };
+
+    const dataLabels: ApexDataLabels = {
+      enabled: true,
+      formatter: (_value: string | number, opts) => {
+        const point = opts.w.config.series?.[opts.seriesIndex]?.data?.[opts.dataPointIndex] as QuadrantChartPoint | undefined;
+        return point?.meta?.label ?? '';
+      },
+      style: {
+        colors: ['#0f172a'],
+        fontSize: '11px',
+        fontWeight: 600,
+      },
+      background: {
+        enabled: true,
+        borderRadius: 12,
+        padding: 6,
+        foreColor: '#0f172a',
+        opacity: 0.92,
+      },
+      offsetY: -12,
+    };
+
+    const tooltip: ApexTooltip = {
+      shared: false,
+      intersect: true,
+      theme: 'dark',
+      custom: ({ w, seriesIndex, dataPointIndex }) => {
+        const point = w.config.series?.[seriesIndex]?.data?.[dataPointIndex] as QuadrantChartPoint | undefined;
+        if (!point) {
+          return '';
+        }
+        const direction = point.meta.expected === 1 ? 'Long' : point.meta.expected === -1 ? 'Short' : 'Flat';
+        const outcome = point.meta.outcome;
+        const actual = this.formatChange(point.meta.actual);
+        const alignment = point.meta.aligned ? 'Aligned' : 'Opposite';
+        const time = Number.isFinite(point.meta.time) ? new Date(point.meta.time).toLocaleString() : 'n/a';
+        return `
+          <div class="quadrant-tooltip">
+            <div class="quadrant-tooltip__headline">${direction} call · ${outcome}</div>
+            <div class="quadrant-tooltip__stat">Return ${actual}</div>
+            <div class="quadrant-tooltip__stat">${alignment} outcome</div>
+            <div class="quadrant-tooltip__meta">${time}</div>
+          </div>
+        `;
+      },
+    };
+
+    const grid: ApexGrid = {
+      borderColor: 'rgba(148,163,184,0.18)',
+      strokeDashArray: 3,
+      xaxis: {
+        lines: {
+          show: true,
+        },
+      },
+      yaxis: {
+        lines: {
+          show: true,
+        },
+      },
+    };
+
+    const fill: ApexFill = {
+      opacity: 1,
+    };
+
+    const stroke: ApexStroke = {
+      width: 0,
+    };
+
+    const legend: ApexLegend = {
+      show: false,
+    };
+
+    const quadrantSeries: ApexAxisChartSeries = [
+      {
+        name: 'Trades',
+        type: 'scatter',
+        data: scatterPoints,
+      },
+    ];
+
+    const quadrantChart: ApexChart = {
+      type: 'scatter',
+      height: 320,
+      background: 'transparent',
+      toolbar: {
+        show: false,
+      },
+      zoom: {
+        enabled: false,
+      },
+      foreColor: '#cbd5f5',
+    };
 
     return {
-      lanes,
-      points,
-      zeroX,
-      bounds: {
-        ...bounds,
-        width: boundsWidth,
-        height: boundsHeight,
+      quadrantSeries,
+      quadrantOptions: {
+        chart: quadrantChart,
+        xaxis: xAxis,
+        yaxis: yAxis,
+        markers,
+        dataLabels,
+        grid,
+        tooltip,
+        annotations,
+        fill,
+        stroke,
+        legend,
       },
-      ticks,
       wins,
       losses,
       tradeCount,
@@ -1195,62 +1275,129 @@ export class AppComponent implements OnInit, OnDestroy {
       maxValue += 1;
     }
 
-    const marginTop = 10;
-    const chartHeight = 70;
-    const yAt = (value: number) => {
-      const ratio = (value - minValue) / (maxValue - minValue);
-      return marginTop + (1 - ratio) * chartHeight;
+    const yPadding = Math.max(0.5, (maxValue - minValue) * 0.15);
+
+    const predictedSeries = records.map((record) => ({
+      x: record.candleTime,
+      y: Number(record.expectedMovePct.toFixed(2)),
+    }));
+
+    const actualSeries = records.map((record) => ({
+      x: record.candleTime,
+      y: record.actualMovePct !== null ? Number((record.actualMovePct as number).toFixed(2)) : null,
+    }));
+
+    const chartSeries: ApexAxisChartSeries = [
+      {
+        name: 'Predicted move',
+        type: 'line',
+        data: predictedSeries,
+      },
+      {
+        name: 'Realised move',
+        type: 'line',
+        data: actualSeries,
+      },
+    ];
+
+    const yAxis: ApexYAxis = {
+      min: minValue - yPadding,
+      max: maxValue + yPadding,
+      tickAmount: 5,
+      labels: {
+        formatter: (value: number) => this.formatChange(value),
+        style: {
+          colors: '#94a3b8',
+        },
+      },
+      axisBorder: {
+        color: 'rgba(148,163,184,0.18)',
+      },
+      axisTicks: {
+        color: 'rgba(148,163,184,0.18)',
+      },
     };
 
-    const count = records.length;
-    const domain = Math.max(1, count - 1);
-    const xAt = (index: number) => (count === 1 ? 50 : (index / domain) * 100);
+    const xAxis: ApexXAxis = {
+      type: 'datetime',
+      labels: {
+        datetimeUTC: false,
+        format: 'MM/dd',
+        style: {
+          colors: '#94a3b8',
+        },
+      },
+    };
 
-    const points = records.map((record, index) => {
-      const x = xAt(index);
-      const predictedY = yAt(record.expectedMovePct);
-      const actual = record.actualMovePct;
-      const actualY = actual !== null ? yAt(actual) : null;
-      return {
-        index,
-        x,
-        predicted: record.expectedMovePct,
-        predictedY,
-        actual,
-        actualY,
-        time: record.candleTime,
-        outcome: record.outcome,
-      };
-    });
+    const stroke: ApexStroke = {
+      width: [3, 2],
+      curve: 'smooth',
+      dashArray: [0, 6],
+    };
 
-    const predictedPath = points
-      .map((point, index) => `${index === 0 ? 'M' : 'L'}${point.x.toFixed(3)},${point.predictedY.toFixed(3)}`)
-      .join(' ');
+    const markers: ApexMarkers = {
+      size: 4,
+      strokeColors: '#0f172a',
+      strokeWidth: 2,
+      hover: {
+        sizeOffset: 2,
+      },
+    };
 
-    let actualPath = '';
-    let openSegment = false;
-    for (const point of points) {
-      if (point.actualY === null) {
-        openSegment = false;
-        continue;
-      }
-      const command = openSegment ? 'L' : 'M';
-      actualPath += `${command}${point.x.toFixed(3)},${point.actualY.toFixed(3)} `;
-      openSegment = true;
-    }
-    actualPath = actualPath.trim();
+    const dataLabels: ApexDataLabels = {
+      enabled: false,
+    };
 
-    const zeroLine = yAt(0);
-    const tickCount = 5;
-    const yTicks = Array.from({ length: tickCount }, (_, idx) => {
-      const value = minValue + ((maxValue - minValue) * idx) / (tickCount - 1);
-      return { value, y: yAt(value) };
-    });
+    const tooltip: ApexTooltip = {
+      shared: true,
+      intersect: false,
+      theme: 'dark',
+      x: {
+        format: 'MMM dd, HH:mm',
+      },
+      y: {
+        formatter: (value: number | null) => (value === null ? 'n/a' : this.formatChange(value)),
+      },
+    };
 
-    const labelIndices = Array.from(
-      new Set([0, Math.floor(count / 2), count - 1].filter((idx) => idx >= 0)),
-    );
-    const xLabels = labelIndices.map((index) => ({ x: xAt(index), time: records[index]?.candleTime ?? 0 }));
+    const grid: ApexGrid = {
+      borderColor: 'rgba(148,163,184,0.16)',
+      strokeDashArray: 3,
+      yaxis: {
+        lines: {
+          show: true,
+        },
+      },
+    };
+
+    const annotations: ApexAnnotations = {
+      yaxis: [
+        {
+          y: 0,
+          borderColor: 'rgba(148,163,184,0.35)',
+          strokeDashArray: 4,
+        },
+      ],
+    };
+
+    const legend: ApexLegend = {
+      show: false,
+    };
+
+    const colors = ['#38bdf8', '#22c55e'];
+
+    const chart: ApexChart = {
+      type: 'line',
+      height: 240,
+      background: 'transparent',
+      toolbar: {
+        show: false,
+      },
+      zoom: {
+        enabled: false,
+      },
+      foreColor: '#cbd5f5',
+    };
 
     const resolvedCount = records.filter((item) => item.actualMovePct !== null).length;
     const hits = records.filter((item) => item.outcome === 'HIT').length;
@@ -1268,14 +1415,20 @@ export class AppComponent implements OnInit, OnDestroy {
     const pending = records.length - resolvedCount;
 
     return {
-      points,
-      predictedPath,
-      actualPath: actualPath.length ? actualPath : null,
-      zeroLine,
-      yTicks,
-      xLabels,
-      minValue,
-      maxValue,
+      chartSeries,
+      chartOptions: {
+        chart,
+        xaxis: xAxis,
+        yaxis: yAxis,
+        stroke,
+        markers,
+        dataLabels,
+        grid,
+        tooltip,
+        annotations,
+        legend,
+        colors,
+      },
       resolvedCount,
       hitRate,
       averageError,

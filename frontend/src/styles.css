@@ -246,111 +246,60 @@ button[disabled] {
 
 .prediction-chart {
   width: 100%;
-  height: 220px;
   border-radius: 12px;
   background: rgba(15,23,42,.4);
   border: 1px solid rgba(148,163,184,.18);
-  overflow: hidden;
-  position: relative;
+  padding: 16px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
-.prediction-chart svg {
+.quadrant-chart {
+  flex: 1 1 auto;
+  min-height: 260px;
+}
+
+.quadrant-chart apx-chart {
   width: 100%;
   height: 100%;
   display: block;
 }
 
-.chart-panel {
-  fill: rgba(15,23,42,.65);
+.quadrant-tooltip {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(15,23,42,.92);
+  border: 1px solid rgba(148,163,184,.2);
+  box-shadow: 0 8px 16px rgba(15,23,42,.35);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #e2e8f0;
+  font-size: .75rem;
 }
 
-.outcome-quadrant svg {
-  width: 100%;
-  height: 220px;
-  display: block;
+.quadrant-tooltip__headline {
+  font-weight: 600;
+  font-size: .8rem;
 }
 
-.quadrant-lanes .lane-band {
-  fill: rgba(15,23,42,.52);
-  stroke: rgba(148,163,184,.14);
-  stroke-width: .4;
+.quadrant-tooltip__stat {
+  color: #cbd5f5;
 }
 
-.quadrant-lanes .lane-band.lane-positive {
-  fill: rgba(34,197,94,.08);
-}
-
-.quadrant-lanes .lane-band.lane-negative {
-  fill: rgba(248,113,113,.08);
-}
-
-.quadrant-lanes .lane-band.lane-neutral {
-  fill: rgba(148,163,184,.08);
-}
-
-.lane-alignment {
-  fill: rgba(56,189,248,.12);
-}
-
-.lane-label {
-  fill: #e2e8f0;
-  font-size: 4.2px;
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  dominant-baseline: middle;
-}
-
-.quadrant-axis {
-  stroke: rgba(148,163,184,.38);
-  stroke-width: .7;
-  stroke-dasharray: 3 2;
-}
-
-.quadrant-tick {
-  stroke: rgba(148,163,184,.16);
-  stroke-width: .5;
-}
-
-.quadrant-tick-label {
-  fill: #94a3b8;
-  font-size: 4px;
-  text-anchor: middle;
-}
-
-.quadrant-points circle {
-  stroke: rgba(15,23,42,.8);
-  stroke-width: .5;
-  fill: rgba(148,163,184,.7);
-}
-
-.quadrant-point.point-win circle {
-  fill: rgba(74,222,128,.85);
-}
-
-.quadrant-point.point-loss circle {
-  fill: rgba(248,113,113,.85);
-}
-
-.quadrant-point.point-pending circle {
-  fill: rgba(148,163,184,.6);
-}
-
-.quadrant-point.point-aligned circle {
-  stroke-width: .8;
-  stroke: rgba(56,189,248,.9);
-}
-
-.quadrant-point-label {
-  fill: #e2e8f0;
-  font-size: 4px;
-  dominant-baseline: middle;
+.quadrant-tooltip__meta {
+  color: #94a3b8;
+  font-size: .7rem;
 }
 
 .lane-summaries {
+  flex: 1 1 auto;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 10px;
-  margin-top: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin: 0;
 }
 
 .lane-card {
@@ -749,14 +698,15 @@ button[disabled] {
 
 .news-history-chart {
   width: 100%;
-  height: 200px;
+  min-height: 220px;
   border-radius: 12px;
   background: rgba(15,23,42,.4);
   border: 1px solid rgba(148,163,184,.12);
-  overflow: hidden;
+  padding: 12px;
+  box-sizing: border-box;
 }
 
-.news-history-chart svg {
+.news-history-chart apx-chart {
   width: 100%;
   height: 100%;
   display: block;
@@ -1059,12 +1009,20 @@ button[disabled] {
   background: rgba(56,189,248,.9);
 }
 
+.legend-swatch--line.news-actual {
+  background: rgba(34,197,94,.85);
+}
+
 .legend-swatch--win {
   background: rgba(74,222,128,.85);
 }
 
 .legend-swatch--loss {
   background: rgba(248,113,113,.85);
+}
+
+.legend-swatch--pending {
+  background: rgba(148,163,184,.75);
 }
 
 @media (min-width: 900px) {
@@ -1076,7 +1034,13 @@ button[disabled] {
     flex: 0 0 300px;
   }
   .prediction-chart {
-    flex: 1 1 auto;
+    flex-direction: row;
+    align-items: stretch;
+  }
+  .lane-summaries {
+    flex: 0 0 260px;
+    grid-template-columns: 1fr;
+    align-content: flex-start;
   }
 }
 
