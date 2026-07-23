@@ -20,6 +20,11 @@ export interface NewsApiEnvironmentConfig {
   enabled: boolean;
   apiToken: string;
   baseUrl: string;
+  equities: {
+    enabled: boolean;
+    apiToken: string;
+    baseUrl: string;
+  };
 }
 
 export interface AppEnvironment {
@@ -42,6 +47,25 @@ const coerceNumber = (value: unknown, fallback: number): number => {
   }
   const numeric = Number(value);
   return Number.isFinite(numeric) ? numeric : fallback;
+};
+
+const coerceBoolean = (value: unknown, fallback: boolean): boolean => {
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (!normalized.length) {
+      return fallback;
+    }
+    if (['true', '1', 'yes', 'y', 'on'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'n', 'off'].includes(normalized)) {
+      return false;
+    }
+  }
+  return fallback;
 };
 
 const trimOrFallback = (value: unknown, fallback: string): string => {
@@ -72,6 +96,9 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
     metaEnv.NG_APP_NEWS_BASE_URL,
     'https://cryptopanic.com/api/v1/posts/',
   );
+  const newsEquitiesEnabled = coerceBoolean(metaEnv.NG_APP_NEWS_EQUITIES_ENABLED, false);
+  const newsEquitiesToken = trimOrFallback(metaEnv.NG_APP_NEWS_EQUITIES_TOKEN, '');
+  const newsEquitiesBaseUrl = trimOrFallback(metaEnv.NG_APP_NEWS_EQUITIES_BASE_URL, '');
 
   const allIntervals: Interval[] = ['1m', '5m', '15m', '1h', '4h', '1d'];
   const defaultIntervalCandidate = trimOrFallback(metaEnv.NG_APP_DEFAULT_INTERVAL, '1m') as Interval;
@@ -217,6 +244,11 @@ export const buildEnvironment = (production: boolean): AppEnvironment => {
       enabled: Boolean(newsApiToken),
       apiToken: newsApiToken,
       baseUrl: newsApiBaseUrl,
+      equities: {
+        enabled: newsEquitiesEnabled && Boolean(newsEquitiesBaseUrl),
+        apiToken: newsEquitiesToken,
+        baseUrl: newsEquitiesBaseUrl,
+      },
     },
   };
 };

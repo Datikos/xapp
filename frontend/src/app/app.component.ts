@@ -264,49 +264,141 @@ interface SegmentConfig {
         </div>
       </section>
 
-      <app-price-card *ngIf="priceChangeChart() as price" [config]="price"></app-price-card>
+      <section
+        class="card decision-brief"
+        *ngIf="
+          !loading() &&
+          !error() &&
+          (store.trendDetails() || store.strategyHealth() || store.validationSummary() || predictionReviewWindow())
+        "
+      >
+        <header class="decision-brief-header">
+          <div>
+            <h2>Decision Brief</h2>
+            <span class="decision-brief-subtitle">Condensed readout before you commit.</span>
+          </div>
+        </header>
+        <div class="insight-strip">
+          <article
+            class="insight-chip"
+            *ngIf="store.trendDetails() as trend"
+            [class.insight-chip--bull]="trend.direction === 'BULL'"
+            [class.insight-chip--bear]="trend.direction === 'BEAR'"
+            [class.insight-chip--neutral]="trend.direction === 'NEUTRAL'"
+          >
+            <div class="insight-chip-header">
+              <span class="insight-chip-label">Trend Bias</span>
+              <span class="insight-chip-context">
+                {{ trend.confidence !== null && trend.confidence !== undefined ? (trend.confidence | number: '1.0-0') + '%' : 'n/a' }}
+              </span>
+            </div>
+            <p class="insight-chip-value">{{ trend.direction | titlecase }}</p>
+            <p class="insight-chip-subtext">{{ trendNarrative() }}</p>
+          </article>
+          <article class="insight-chip insight-chip--info" *ngIf="store.strategyHealth() as health">
+            <div class="insight-chip-header">
+              <span class="insight-chip-label">Strategy Health</span>
+              <span class="insight-chip-context">PF {{ formatProfitFactor(health.profitFactor) }}</span>
+            </div>
+            <p class="insight-chip-value">{{ formatChange(health.expectancy) }}</p>
+            <p class="insight-chip-subtext">
+              Drawdown {{ formatChange(health.maxDrawdown) }} · Avg win {{ formatChange(health.averageGain) }}
+            </p>
+          </article>
+          <article class="insight-chip insight-chip--warn" *ngIf="store.validationSummary() as summary">
+            <div class="insight-chip-header">
+              <span class="insight-chip-label">Decision Score</span>
+              <span class="insight-chip-context">Pending {{ summary.pending }}</span>
+            </div>
+            <p class="insight-chip-value">
+              {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}
+            </p>
+            <p class="insight-chip-subtext">
+              Wins {{ summary.wins }} · Losses {{ summary.losses }}
+            </p>
+          </article>
+          <article class="insight-chip insight-chip--neutral" *ngIf="predictionReviewWindow() as review">
+            <div class="insight-chip-header">
+              <span class="insight-chip-label">Review Window</span>
+              <span class="insight-chip-context">Horizon {{ review.horizonBars ?? 'n/a' }}</span>
+            </div>
+            <p class="insight-chip-value">{{ review.status | titlecase }}</p>
+            <p class="insight-chip-subtext">
+              {{
+                review.dueTime
+                  ? (review.dueTime | date: 'HH:mm') + ' · ' + formatCountdown(review.dueTime)
+                  : 'Evaluation synced'
+              }}
+            </p>
+          </article>
+        </div>
+      </section>
 
-      <app-candle-card *ngIf="candleChart() as candle" [config]="candle"></app-candle-card>
+      <div class="dashboard-grid">
+        <app-price-card
+          class="tile tile--wide tile--highlight"
+          *ngIf="priceChangeChart() as price"
+          [config]="price"
+        ></app-price-card>
 
-      <app-snapshot-strip *ngIf="snapshotTiles() as tiles" [tiles]="tiles"></app-snapshot-strip>
+        <app-activity-card
+          class="tile"
+          *ngIf="predictionActivities() as activities"
+          [activities]="activities"
+          [live]="liveRecommendation()"
+        ></app-activity-card>
 
-      <app-activity-card
-        *ngIf="predictionActivities() as activities"
-        [activities]="activities"
-        [live]="liveRecommendation()"
-      ></app-activity-card>
+        <app-candle-card
+          class="tile"
+          *ngIf="candleChart() as candle"
+          [config]="candle"
+        ></app-candle-card>
 
-      <app-news-impact-card [news]="store.newsPrediction()"></app-news-impact-card>
+        <app-snapshot-strip
+          class="tile tile--insights"
+          *ngIf="snapshotTiles() as tiles"
+          [tiles]="tiles"
+        ></app-snapshot-strip>
 
-      <app-news-history-card [series]="newsPredictionSeries()"></app-news-history-card>
+        <app-signals-grid
+          class="tile tile--full tile--panel"
+          [signals]="store.signals()"
+          [fastSignals]="store.fastSignals()"
+          [validations]="store.decisionValidations()"
+          [nearMisses]="store.nearMisses()"
+          [hasValidations]="hasValidations()"
+          [validationHorizon]="validationHorizon()"
+        ></app-signals-grid>
 
-      <app-prediction-outcome-card [chart]="predictionChart()"></app-prediction-outcome-card>
+        <app-news-impact-card class="tile" [news]="store.newsPrediction()"></app-news-impact-card>
 
-      <app-pattern-research-card
-        [patterns]="patternInsights()"
-        [summary]="patternSummary()"
-      ></app-pattern-research-card>
+        <app-news-history-card
+          class="tile"
+          [series]="newsPredictionSeries()"
+        ></app-news-history-card>
 
-      <div class="layout-grid">
+        <app-prediction-outcome-card
+          class="tile"
+          [chart]="predictionChart()"
+        ></app-prediction-outcome-card>
+
+        <app-pattern-research-card
+          class="tile"
+          [patterns]="patternInsights()"
+          [summary]="patternSummary()"
+        ></app-pattern-research-card>
+
         <app-trend-insights-card
+          class="tile"
           [trendDetails]="store.trendDetails()"
           [narrative]="trendNarrative()"
           [buckets]="groupedTrendFactors()"
         ></app-trend-insights-card>
 
-        <app-advisor-card [advice]="incomeAdvice()"></app-advisor-card>
+        <app-advisor-card class="tile" [advice]="incomeAdvice()"></app-advisor-card>
+
+        <app-playbook-card class="tile"></app-playbook-card>
       </div>
-
-      <app-signals-grid
-        [signals]="store.signals()"
-        [fastSignals]="store.fastSignals()"
-        [validations]="store.decisionValidations()"
-        [nearMisses]="store.nearMisses()"
-        [hasValidations]="hasValidations()"
-        [validationHorizon]="validationHorizon()"
-      ></app-signals-grid>
-
-      <app-playbook-card></app-playbook-card>
     </main>
   `,
   styles: [

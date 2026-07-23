@@ -154,6 +154,132 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
 }
 
+.decision-brief {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.decision-brief-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.decision-brief-header h2 {
+  margin: 0;
+}
+
+.decision-brief-subtitle {
+  display: block;
+  font-size: .85rem;
+  color: #94a3b8;
+  margin-top: 4px;
+}
+
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+  grid-auto-flow: dense;
+}
+
+.dashboard-grid .tile {
+  display: block;
+  height: 100%;
+}
+
+.dashboard-grid .tile .card {
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+  height: 100%;
+}
+
+.dashboard-grid .tile--wide {
+  grid-column: span 2;
+}
+
+.dashboard-grid .tile--full {
+  grid-column: 1 / -1;
+}
+
+.dashboard-grid .tile--highlight .card {
+  border-color: rgba(59,130,246,.48);
+  box-shadow: 0 22px 48px rgba(37,99,235,.32);
+  background: linear-gradient(160deg, rgba(15,23,42,.9), rgba(30,64,175,.4));
+  min-height: 100%;
+}
+
+.dashboard-grid .tile:not(.tile--highlight):not(.tile--panel) .card {
+  border-color: rgba(148,163,184,.18);
+  box-shadow: 0 14px 28px rgba(15,23,42,.26);
+}
+
+.dashboard-grid .tile:not(.tile--highlight):not(.tile--panel) .card:hover {
+  border-color: rgba(148,163,184,.32);
+  box-shadow: 0 16px 32px rgba(148,163,184,.22);
+}
+
+.dashboard-grid .tile--highlight .card:hover {
+  border-color: rgba(56,189,248,.55);
+  box-shadow: 0 26px 54px rgba(56,189,248,.35);
+}
+
+.dashboard-grid .tile--insights > .insight-strip {
+  border: 1px solid rgba(148,163,184,.18);
+  border-radius: 14px;
+  padding: 16px;
+  background: rgba(15,23,42,.68);
+  box-shadow: 0 14px 28px rgba(15,23,42,.26);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.dashboard-grid .tile--insights > .insight-strip:hover {
+  border-color: rgba(148,163,184,.32);
+  box-shadow: 0 16px 32px rgba(148,163,184,.22);
+}
+
+.dashboard-grid .tile--panel .layout-grid {
+  background: linear-gradient(145deg, rgba(30,64,175,.28), rgba(15,23,42,.8));
+  border: 1px solid rgba(59,130,246,.28);
+  border-radius: 14px;
+  padding: 18px;
+  box-shadow: 0 18px 42px rgba(30,64,175,.28);
+  height: 100%;
+}
+
+.dashboard-grid .tile--panel .layout-grid .card {
+  background: rgba(15,23,42,.65);
+}
+
+.dashboard-grid .tile--panel .layout-grid .card:hover {
+  background: rgba(15,23,42,.72);
+}
+
+@media (max-width: 1200px) {
+  .dashboard-grid .tile--wide {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  }
+
+  .dashboard-grid .tile--full {
+    grid-column: auto;
+  }
+
+  .dashboard-grid .tile--insights > .insight-strip {
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+
 .control-hub {
   display: flex;
   flex-direction: column;

@@ -6,6 +6,11 @@ export interface NewsApiConfig {
   enabled: boolean;
   apiToken: string;
   baseUrl?: string;
+  equities: {
+    enabled: boolean;
+    apiToken: string;
+    baseUrl?: string;
+  };
 }
 
 export const NEWS_API_CONFIG = new InjectionToken<NewsApiConfig>('NEWS_API_CONFIG', {
