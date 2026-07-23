@@ -5,7 +5,9 @@
   "scripts": {
     "start:frontend": "cd frontend && npm start",
     "build:frontend": "cd frontend && npm run build",
-    "install:frontend": "cd frontend && npm ci"
+    "install:frontend": "cd frontend && npm ci",
+    "start:server": "cd server && npm start",
+    "install:server": "cd server && npm install"
   },
   "engines": {
     "node": ">=18"
