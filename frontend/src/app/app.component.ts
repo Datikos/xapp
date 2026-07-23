@@ -93,16 +93,17 @@ interface SegmentConfig {
         <p>Angular 17 signals-driven dashboard for EMA, MACD, and RSI confluence.</p>
       </header>
       <nav class="segment-nav">
-        <button
-          type="button"
-          *ngFor="let option of marketSegments"
-          (click)="onSegmentChange(option.id)"
-          [class.segment-nav__button--active]="option.id === segmentValue"
-        >
-          {{ option.label }}
-        </button>
+        @for (option of marketSegments; track option) {
+          <button
+            type="button"
+            (click)="onSegmentChange(option.id)"
+            [class.segment-nav__button--active]="option.id === segmentValue"
+            >
+            {{ option.label }}
+          </button>
+        }
       </nav>
-
+    
       <section class="card control-hub">
         <header class="control-hub-header">
           <div>
@@ -113,7 +114,7 @@ interface SegmentConfig {
             class="trend-chip"
             [class.trend-chip--bull]="store.trend() === 'BULL'"
             [class.trend-chip--bear]="store.trend() === 'BEAR'"
-          >
+            >
             Trend: {{ store.trend() }}
           </span>
         </header>
@@ -122,23 +123,29 @@ interface SegmentConfig {
             <label class="control-field">
               <span class="control-field-label">Provider</span>
               <select [ngModel]="providerValue" (ngModelChange)="onProviderChange($event)">
-                <option *ngFor="let provider of visibleProviders()" [value]="provider.id">
-                  {{ provider.label }}
-                </option>
+                @for (provider of visibleProviders(); track provider) {
+                  <option [value]="provider.id">
+                    {{ provider.label }}
+                  </option>
+                }
               </select>
             </label>
             <label class="control-field">
               <span class="control-field-label">Asset</span>
               <select [ngModel]="assetValue" (ngModelChange)="onAssetChange($event)">
-                <option *ngFor="let asset of visibleAssets()" [value]="asset.id">
-                  {{ asset.base }}/{{ asset.quote }} · {{ asset.name }}
-                </option>
+                @for (asset of visibleAssets(); track asset) {
+                  <option [value]="asset.id">
+                    {{ asset.base }}/{{ asset.quote }} · {{ asset.name }}
+                  </option>
+                }
               </select>
             </label>
             <label class="control-field">
               <span class="control-field-label">Interval</span>
               <select [ngModel]="intervalValue" (ngModelChange)="onIntervalChange($event)">
-                <option *ngFor="let option of intervals" [value]="option">{{ option }}</option>
+                @for (option of intervals; track option) {
+                  <option [value]="option">{{ option }}</option>
+                }
               </select>
             </label>
             <div class="control-hub-buttons">
@@ -151,33 +158,40 @@ interface SegmentConfig {
               <span class="control-stat-label">Auto mode</span>
               <span class="control-stat-value">{{ auto() ? autoEnabledLabel : 'Manual' }}</span>
             </div>
-            <div
-              class="control-stat"
-              *ngIf="predictionReviewWindow() as review"
-              [class.control-stat--alert]="review.status === 'overdue'"
-            >
-              <span class="control-stat-label">Review window</span>
-              <span class="control-stat-value" [ngSwitch]="review.status">
-                <ng-container *ngSwitchCase="'pending'">
-                  {{ review.dueTime | date: 'HH:mm' }} · {{ formatCountdown(review.dueTime) }}
-                </ng-container>
-                <ng-container *ngSwitchCase="'overdue'">
-                  Overdue · {{ formatCountdown(review.dueTime) }}
-                </ng-container>
-                <ng-container *ngSwitchDefault>
-                  Reviewed {{ review.evaluationTime ? (review.evaluationTime | date: 'HH:mm') : 'n/a' }}
-                </ng-container>
-              </span>
-              <span class="control-stat-note">Horizon {{ review.horizonBars }} bars</span>
-            </div>
-            <div class="control-stat" *ngIf="store.lastUpdated() as updated">
-              <span class="control-stat-label">Last refresh</span>
-              <span class="control-stat-value">{{ updated | date: 'HH:mm:ss' }}</span>
-            </div>
-            <div class="control-stat" *ngIf="store.lastCandle() as last">
-              <span class="control-stat-label">Last {{ intervalValue }} close</span>
-              <span class="control-stat-value">{{ last.closeTime | date: 'MMM d · HH:mm' }}</span>
-            </div>
+            @if (predictionReviewWindow(); as review) {
+              <div
+                class="control-stat"
+                [class.control-stat--alert]="review.status === 'overdue'"
+                >
+                <span class="control-stat-label">Review window</span>
+                <span class="control-stat-value">
+                  @switch (review.status) {
+                    @case ('pending') {
+                      {{ review.dueTime | date: 'HH:mm' }} · {{ formatCountdown(review.dueTime) }}
+                    }
+                    @case ('overdue') {
+                      Overdue · {{ formatCountdown(review.dueTime) }}
+                    }
+                    @default {
+                      Reviewed {{ review.evaluationTime ? (review.evaluationTime | date: 'HH:mm') : 'n/a' }}
+                    }
+                  }
+                </span>
+                <span class="control-stat-note">Horizon {{ review.horizonBars }} bars</span>
+              </div>
+            }
+            @if (store.lastUpdated(); as updated) {
+              <div class="control-stat">
+                <span class="control-stat-label">Last refresh</span>
+                <span class="control-stat-value">{{ updated | date: 'HH:mm:ss' }}</span>
+              </div>
+            }
+            @if (store.lastCandle(); as last) {
+              <div class="control-stat">
+                <span class="control-stat-label">Last {{ intervalValue }} close</span>
+                <span class="control-stat-value">{{ last.closeTime | date: 'MMM d · HH:mm' }}</span>
+              </div>
+            }
             <div class="control-stat">
               <span class="control-stat-label">Feed</span>
               <span class="control-stat-value">{{ providerLabel() }} · {{ assetPairLabel() }}</span>
@@ -185,181 +199,214 @@ interface SegmentConfig {
           </div>
         </div>
         <div class="control-hub-status status-grid">
-          <article class="status-card danger" *ngIf="error() as message">
-            <h3>Data Error</h3>
-            <p>{{ message }}</p>
-          </article>
-
-          <article class="status-card muted" *ngIf="!error() && loading()">
-            <h3>Syncing</h3>
-            <p>Fetching latest candles…</p>
-          </article>
-
-          <article class="status-card" *ngIf="!loading() && !error() && recentFastSignal() as fast">
-            <h3>Momentum Ping</h3>
-            <p>
-              <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
-              @ {{ fast.price | number: '1.0-0' }}
-            </p>
-            <time>{{ fast.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-          </article>
-
-          <article class="status-card" *ngIf="!loading() && !error() && store.lastCandle() as last">
-            <h3>Market Clock</h3>
-            <p>Last {{ intervalValue }} candle closed {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}</p>
-            <p *ngIf="store.lastUpdated() as updated">Refreshed {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
-            <span class="meta">Source: {{ providerLabel() }}</span>
-          </article>
-
-          <article
-            class="status-card warning"
-            *ngIf="!loading() && !error() && primarySignalStale() && store.latestSignal() as primary"
-          >
-            <h3>Awaiting Confirmation</h3>
-            <p>No new primary signals since {{ primary.time | date: 'yyyy-MM-dd HH:mm' }}</p>
-          </article>
-
-          <article class="status-card" *ngIf="!loading() && !error() && latestNearMiss() as near">
-            <h3>Closest Setup</h3>
-            <p>{{ near.bias }} bias pending {{ near.missing.join(', ') }}</p>
-            <time>{{ near.time | date: 'yyyy-MM-dd HH:mm' }}</time>
-          </article>
-
-          <article class="status-card" *ngIf="!loading() && !error() && store.validationSummary() as summary">
-            <h3>Decision Scorecard</h3>
-            <p>Win rate: {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}</p>
-            <p>Wins / Losses / Pending: {{ summary.wins }} / {{ summary.losses }} / {{ summary.pending }}</p>
-            <p *ngIf="summary.lastOutcome">
-              Last outcome
-              <span class="outcome-pill" [class.outcome-win]="summary.lastOutcome === 'WIN'" [class.outcome-loss]="summary.lastOutcome === 'LOSS'" [class.outcome-pending]="summary.lastOutcome === 'PENDING'">
-                {{ summary.lastOutcome }}
-              </span>
-              <span *ngIf="summary.lastChangePct !== null">
-                ({{ formatChange(summary.lastChangePct) }})
-              </span>
-            </p>
-          </article>
-
-          <article class="status-card health-card" *ngIf="!loading() && !error() && store.strategyHealth() as health">
-            <h3>Strategy Health</h3>
-            <div class="health-metrics">
-              <div>
-                <span class="metric-label">Expectancy</span>
-                <span class="metric-value">{{ formatChange(health.expectancy) }}</span>
+          @if (error(); as message) {
+            <article class="status-card danger">
+              <h3>Data Error</h3>
+              <p>{{ message }}</p>
+            </article>
+          }
+    
+          @if (!error() && loading()) {
+            <article class="status-card muted">
+              <h3>Syncing</h3>
+              <p>Fetching latest candles…</p>
+            </article>
+          }
+    
+          @if (!loading() && !error() && recentFastSignal(); as fast) {
+            <article class="status-card">
+              <h3>Momentum Ping</h3>
+              <p>
+                <span class="pill" [class.long-pill]="fast.type === 'LONG'" [class.short-pill]="fast.type === 'SHORT'">{{ fast.type }}</span>
+                @ {{ fast.price | number: '1.0-0' }}
+              </p>
+              <time>{{ fast.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+            </article>
+          }
+    
+          @if (!loading() && !error() && store.lastCandle(); as last) {
+            <article class="status-card">
+              <h3>Market Clock</h3>
+              <p>Last {{ intervalValue }} candle closed {{ last.closeTime | date: 'yyyy-MM-dd HH:mm' }}</p>
+              @if (store.lastUpdated(); as updated) {
+                <p>Refreshed {{ updated | date: 'yyyy-MM-dd HH:mm:ss' }}</p>
+              }
+              <span class="meta">Source: {{ providerLabel() }}</span>
+            </article>
+          }
+    
+          @if (!loading() && !error() && primarySignalStale() && store.latestSignal(); as primary) {
+            <article
+              class="status-card warning"
+              >
+              <h3>Awaiting Confirmation</h3>
+              <p>No new primary signals since {{ primary.time | date: 'yyyy-MM-dd HH:mm' }}</p>
+            </article>
+          }
+    
+          @if (!loading() && !error() && latestNearMiss(); as near) {
+            <article class="status-card">
+              <h3>Closest Setup</h3>
+              <p>{{ near.bias }} bias pending {{ near.missing.join(', ') }}</p>
+              <time>{{ near.time | date: 'yyyy-MM-dd HH:mm' }}</time>
+            </article>
+          }
+    
+          @if (!loading() && !error() && store.validationSummary(); as summary) {
+            <article class="status-card">
+              <h3>Decision Scorecard</h3>
+              <p>Win rate: {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}</p>
+              <p>Wins / Losses / Pending: {{ summary.wins }} / {{ summary.losses }} / {{ summary.pending }}</p>
+              @if (summary.lastOutcome) {
+                <p>
+                  Last outcome
+                  <span class="outcome-pill" [class.outcome-win]="summary.lastOutcome === 'WIN'" [class.outcome-loss]="summary.lastOutcome === 'LOSS'" [class.outcome-pending]="summary.lastOutcome === 'PENDING'">
+                    {{ summary.lastOutcome }}
+                  </span>
+                  @if (summary.lastChangePct !== null) {
+                    <span>
+                      ({{ formatChange(summary.lastChangePct) }})
+                    </span>
+                  }
+                </p>
+              }
+            </article>
+          }
+    
+          @if (!loading() && !error() && store.strategyHealth(); as health) {
+            <article class="status-card health-card">
+              <h3>Strategy Health</h3>
+              <div class="health-metrics">
+                <div>
+                  <span class="metric-label">Expectancy</span>
+                  <span class="metric-value">{{ formatChange(health.expectancy) }}</span>
+                </div>
+                <div>
+                  <span class="metric-label">Profit Factor</span>
+                  <span class="metric-value">{{ formatProfitFactor(health.profitFactor) }}</span>
+                </div>
+                <div>
+                  <span class="metric-label">Max Drawdown</span>
+                  <span class="metric-value drawdown">{{ formatChange(health.maxDrawdown) }}</span>
+                </div>
               </div>
-              <div>
-                <span class="metric-label">Profit Factor</span>
-                <span class="metric-value">{{ formatProfitFactor(health.profitFactor) }}</span>
-              </div>
-              <div>
-                <span class="metric-label">Max Drawdown</span>
-                <span class="metric-value drawdown">{{ formatChange(health.maxDrawdown) }}</span>
-              </div>
-            </div>
-            <p class="health-summary">
-              Avg win {{ formatChange(health.averageGain) }} · Avg loss {{ formatChange(health.averageLoss) }} · Win streak {{ health.bestWinStreak }} / Loss streak
-              {{ health.bestLossStreak }}
-            </p>
-          </article>
+              <p class="health-summary">
+                Avg win {{ formatChange(health.averageGain) }} · Avg loss {{ formatChange(health.averageLoss) }} · Win streak {{ health.bestWinStreak }} / Loss streak
+                {{ health.bestLossStreak }}
+              </p>
+            </article>
+          }
         </div>
       </section>
-
-      <section
-        class="card decision-brief"
-        *ngIf="
-          !loading() &&
-          !error() &&
-          (store.trendDetails() || store.strategyHealth() || store.validationSummary() || predictionReviewWindow())
-        "
-      >
-        <header class="decision-brief-header">
-          <div>
-            <h2>Decision Brief</h2>
-            <span class="decision-brief-subtitle">Condensed readout before you commit.</span>
-          </div>
-        </header>
-        <div class="insight-strip">
-          <article
-            class="insight-chip"
-            *ngIf="store.trendDetails() as trend"
-            [class.insight-chip--bull]="trend.direction === 'BULL'"
-            [class.insight-chip--bear]="trend.direction === 'BEAR'"
-            [class.insight-chip--neutral]="trend.direction === 'NEUTRAL'"
+    
+      @if (
+        !loading() &&
+        !error() &&
+        (store.trendDetails() || store.strategyHealth() || store.validationSummary() || predictionReviewWindow())
+        ) {
+        <section
+          class="card decision-brief"
           >
-            <div class="insight-chip-header">
-              <span class="insight-chip-label">Trend Bias</span>
-              <span class="insight-chip-context">
-                {{ trend.confidence !== null && trend.confidence !== undefined ? (trend.confidence | number: '1.0-0') + '%' : 'n/a' }}
-              </span>
+          <header class="decision-brief-header">
+            <div>
+              <h2>Decision Brief</h2>
+              <span class="decision-brief-subtitle">Condensed readout before you commit.</span>
             </div>
-            <p class="insight-chip-value">{{ trend.direction | titlecase }}</p>
-            <p class="insight-chip-subtext">{{ trendNarrative() }}</p>
-          </article>
-          <article class="insight-chip insight-chip--info" *ngIf="store.strategyHealth() as health">
-            <div class="insight-chip-header">
-              <span class="insight-chip-label">Strategy Health</span>
-              <span class="insight-chip-context">PF {{ formatProfitFactor(health.profitFactor) }}</span>
-            </div>
-            <p class="insight-chip-value">{{ formatChange(health.expectancy) }}</p>
-            <p class="insight-chip-subtext">
-              Drawdown {{ formatChange(health.maxDrawdown) }} · Avg win {{ formatChange(health.averageGain) }}
-            </p>
-          </article>
-          <article class="insight-chip insight-chip--warn" *ngIf="store.validationSummary() as summary">
-            <div class="insight-chip-header">
-              <span class="insight-chip-label">Decision Score</span>
-              <span class="insight-chip-context">Pending {{ summary.pending }}</span>
-            </div>
-            <p class="insight-chip-value">
-              {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}
-            </p>
-            <p class="insight-chip-subtext">
-              Wins {{ summary.wins }} · Losses {{ summary.losses }}
-            </p>
-          </article>
-          <article class="insight-chip insight-chip--neutral" *ngIf="predictionReviewWindow() as review">
-            <div class="insight-chip-header">
-              <span class="insight-chip-label">Review Window</span>
-              <span class="insight-chip-context">Horizon {{ review.horizonBars ?? 'n/a' }}</span>
-            </div>
-            <p class="insight-chip-value">{{ review.status | titlecase }}</p>
-            <p class="insight-chip-subtext">
-              {{
-                review.dueTime
+          </header>
+          <div class="insight-strip">
+            @if (store.trendDetails(); as trend) {
+              <article
+                class="insight-chip"
+                [class.insight-chip--bull]="trend.direction === 'BULL'"
+                [class.insight-chip--bear]="trend.direction === 'BEAR'"
+                [class.insight-chip--neutral]="trend.direction === 'NEUTRAL'"
+                >
+                <div class="insight-chip-header">
+                  <span class="insight-chip-label">Trend Bias</span>
+                  <span class="insight-chip-context">
+                    {{ trend.confidence !== null && trend.confidence !== undefined ? (trend.confidence | number: '1.0-0') + '%' : 'n/a' }}
+                  </span>
+                </div>
+                <p class="insight-chip-value">{{ trend.direction | titlecase }}</p>
+                <p class="insight-chip-subtext">{{ trendNarrative() }}</p>
+              </article>
+            }
+            @if (store.strategyHealth(); as health) {
+              <article class="insight-chip insight-chip--info">
+                <div class="insight-chip-header">
+                  <span class="insight-chip-label">Strategy Health</span>
+                  <span class="insight-chip-context">PF {{ formatProfitFactor(health.profitFactor) }}</span>
+                </div>
+                <p class="insight-chip-value">{{ formatChange(health.expectancy) }}</p>
+                <p class="insight-chip-subtext">
+                  Drawdown {{ formatChange(health.maxDrawdown) }} · Avg win {{ formatChange(health.averageGain) }}
+                </p>
+              </article>
+            }
+            @if (store.validationSummary(); as summary) {
+              <article class="insight-chip insight-chip--warn">
+                <div class="insight-chip-header">
+                  <span class="insight-chip-label">Decision Score</span>
+                  <span class="insight-chip-context">Pending {{ summary.pending }}</span>
+                </div>
+                <p class="insight-chip-value">
+                  {{ summary.winRate !== null ? (summary.winRate | number: '1.0-0') + '%' : 'n/a' }}
+                </p>
+                <p class="insight-chip-subtext">
+                  Wins {{ summary.wins }} · Losses {{ summary.losses }}
+                </p>
+              </article>
+            }
+            @if (predictionReviewWindow(); as review) {
+              <article class="insight-chip insight-chip--neutral">
+                <div class="insight-chip-header">
+                  <span class="insight-chip-label">Review Window</span>
+                  <span class="insight-chip-context">Horizon {{ review.horizonBars ?? 'n/a' }}</span>
+                </div>
+                <p class="insight-chip-value">{{ review.status | titlecase }}</p>
+                <p class="insight-chip-subtext">
+                  {{
+                  review.dueTime
                   ? (review.dueTime | date: 'HH:mm') + ' · ' + formatCountdown(review.dueTime)
                   : 'Evaluation synced'
-              }}
-            </p>
-          </article>
-        </div>
-      </section>
-
+                  }}
+                </p>
+              </article>
+            }
+          </div>
+        </section>
+      }
+    
       <div class="dashboard-grid">
-        <app-price-card
-          class="tile tile--wide tile--highlight"
-          *ngIf="priceChangeChart() as price"
-          [config]="price"
-        ></app-price-card>
-
-        <app-activity-card
-          class="tile"
-          *ngIf="predictionActivities() as activities"
-          [activities]="activities"
-          [live]="liveRecommendation()"
-        ></app-activity-card>
-
-        <app-candle-card
-          class="tile"
-          *ngIf="candleChart() as candle"
-          [config]="candle"
-        ></app-candle-card>
-
-        <app-snapshot-strip
-          class="tile tile--insights"
-          *ngIf="snapshotTiles() as tiles"
-          [tiles]="tiles"
-        ></app-snapshot-strip>
-
+        @if (priceChangeChart(); as price) {
+          <app-price-card
+            class="tile tile--wide tile--highlight"
+            [config]="price"
+          ></app-price-card>
+        }
+    
+        @if (predictionActivities(); as activities) {
+          <app-activity-card
+            class="tile"
+            [activities]="activities"
+            [live]="liveRecommendation()"
+          ></app-activity-card>
+        }
+    
+        @if (candleChart(); as candle) {
+          <app-candle-card
+            class="tile"
+            [config]="candle"
+          ></app-candle-card>
+        }
+    
+        @if (snapshotTiles(); as tiles) {
+          <app-snapshot-strip
+            class="tile tile--insights"
+            [tiles]="tiles"
+          ></app-snapshot-strip>
+        }
+    
         <app-signals-grid
           class="tile tile--full tile--panel"
           [signals]="store.signals()"
@@ -369,38 +416,38 @@ interface SegmentConfig {
           [hasValidations]="hasValidations()"
           [validationHorizon]="validationHorizon()"
         ></app-signals-grid>
-
+    
         <app-news-impact-card class="tile" [news]="store.newsPrediction()"></app-news-impact-card>
-
+    
         <app-news-history-card
           class="tile"
           [series]="newsPredictionSeries()"
         ></app-news-history-card>
-
+    
         <app-prediction-outcome-card
           class="tile"
           [chart]="predictionChart()"
         ></app-prediction-outcome-card>
-
+    
         <app-pattern-research-card
           class="tile"
           [patterns]="patternInsights()"
           [summary]="patternSummary()"
         ></app-pattern-research-card>
-
+    
         <app-trend-insights-card
           class="tile"
           [trendDetails]="store.trendDetails()"
           [narrative]="trendNarrative()"
           [buckets]="groupedTrendFactors()"
         ></app-trend-insights-card>
-
+    
         <app-advisor-card class="tile" [advice]="incomeAdvice()"></app-advisor-card>
-
+    
         <app-playbook-card class="tile"></app-playbook-card>
       </div>
     </main>
-  `,
+    `,
   styles: [
     `
       :host {
