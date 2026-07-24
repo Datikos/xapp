@@ -10,6 +10,6 @@
     "install:server": "cd server && npm install"
   },
   "engines": {
-    "node": ">=18"
+    "node": "^24.15.0 || >=26.0.0"
   }
 }

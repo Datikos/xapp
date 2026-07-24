@@ -23,6 +23,9 @@
     "rxjs": "^7.8.1",
     "tslib": "^2.6.2"
   },
+  "engines": {
+    "node": "^24.15.0 || >=26.0.0"
+  },
   "devDependencies": {
     "@angular/build": "^22.0.8",
     "@angular/cli": "^22.0.8",
